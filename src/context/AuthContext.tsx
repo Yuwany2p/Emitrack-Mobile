@@ -4,7 +4,6 @@ import { supabase } from '../lib/supabase';
 import { showToast } from '../components/Toast';
 import { makeRedirectUri } from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
-import * as Crypto from 'expo-crypto';
 
 // Required for expo-auth-session to work on Android
 WebBrowser.maybeCompleteAuthSession();
@@ -68,11 +67,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithGoogle = async () => {
     try {
-      // Generate PKCE code verifier and challenge for security
-      const codeVerifier = Crypto.randomUUID();
-      const codeChallenge = codeVerifier; // Supabase uses plain method
-
       const redirectUrl = makeRedirectUri({ scheme: 'emitrack' });
+      console.log('[Auth] Redirect URL:', redirectUrl);
 
       // Request OAuth URL from Supabase
       const { data, error } = await supabase.auth.signInWithOAuth({
@@ -80,12 +76,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         options: {
           redirectTo: redirectUrl,
           skipBrowserRedirect: true,
-          queryParams: {
-            code_challenge: codeChallenge,
-            code_challenge_method: 'plain',
-          },
         },
       });
+
+      console.log('[Auth] Supabase Auth URL:', data?.url);
 
       if (error) {
         showToast(error.message, 'warning');
@@ -101,27 +95,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
 
       if (result.type === 'success' && result.url) {
-        // Extract the authorization code from redirect URL
-        const url = new URL(result.url);
-        const params = new URLSearchParams(url.hash.substring(1)); // fragment
-        const code = url.searchParams.get('code') ?? params.get('code');
+        // Jangan gunakan new URL() karena React Native sering gagal parse custom scheme
+        const hashIndex = result.url.indexOf('#');
+        
+        if (hashIndex !== -1) {
+          const fragment = result.url.substring(hashIndex + 1);
+          // Parse fragment secara manual
+          const params = fragment.split('&').reduce((acc, current) => {
+            const [key, value] = current.split('=');
+            if (key && value) acc[key] = decodeURIComponent(value);
+            return acc;
+          }, {} as Record<string, string>);
 
-        if (code) {
-          // Exchange code for session
-          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-          if (exchangeError) {
-            showToast(exchangeError.message, 'warning');
-          }
-        } else {
-          // Check if tokens are in the fragment (implicit flow)
-          const accessToken = params.get('access_token');
-          const refreshToken = params.get('refresh_token');
+          const accessToken = params['access_token'];
+          const refreshToken = params['refresh_token'];
+
           if (accessToken) {
-            await supabase.auth.setSession({
+            // Set session using tokens from the redirect
+            const { error: sessionError } = await supabase.auth.setSession({
               access_token: accessToken,
               refresh_token: refreshToken ?? '',
             });
+            if (sessionError) {
+              showToast(sessionError.message, 'warning');
+            }
+          } else {
+            showToast('Token tidak ditemukan di URL', 'warning');
+            console.log('[Auth] Parsed params:', params);
           }
+        } else {
+          showToast('Fragment URL tidak ditemukan', 'warning');
+          console.log('[Auth] Full redirect URL:', result.url);
         }
       }
     } catch (err: any) {

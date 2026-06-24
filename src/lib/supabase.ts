@@ -18,5 +18,6 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false, // Important for React Native
+    flowType: 'implicit',     // Return tokens in URL fragment, not PKCE code exchange
   },
 });
