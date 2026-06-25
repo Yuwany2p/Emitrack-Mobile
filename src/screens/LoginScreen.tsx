@@ -19,14 +19,14 @@ export default function LoginScreen() {
       {/* Header Section */}
       <View style={styles.header}>
         <View style={styles.logoContainer}>
-          <Leaf color="white" size={36} strokeWidth={2} />
+          {/* <Leaf color="white" size={36} strokeWidth={2} />/ */}
         </View>
         <Text style={styles.appName}>EmiTrack</Text>
         <Text style={styles.tagline}>Jejak Emisi, Aksi Nyata</Text>
 
         <View style={styles.badge}>
           <Trophy color="#FAC775" size={12} strokeWidth={2} />
-          <Text style={styles.badgeText}>INNOVATE CodeUp 2026 · SDG 11</Text>
+          <Text style={styles.badgeText}>NIC 2026</Text>
         </View>
       </View>
 

@@ -1,3 +1,6 @@
+import { Leaf, TreePine, Zap, Gem } from 'lucide-react-native';
+import { ElementType } from 'react';
+
 export type LevelData = {
   level: number;
   nama: string;
@@ -78,3 +81,31 @@ export function getLevelProgress(poin: number) {
 
   return { current, next, progress, poinToNext };
 }
+
+// Badge eksklusif yang unlock berdasarkan level
+export const LEVEL_BADGES = [
+  {
+    levelRequired: 2,
+    icon: Leaf,
+    nama: 'Pejuang Hijau',
+    deskripsi: 'Capai level Pejuang Hijau (100 poin)',
+  },
+  {
+    levelRequired: 3,
+    icon: TreePine,
+    nama: 'Eco Hero',
+    deskripsi: 'Capai level Eco Hero (300 poin)',
+  },
+  {
+    levelRequired: 4,
+    icon: Zap,
+    nama: 'Carbon Fighter',
+    deskripsi: 'Capai level Carbon Fighter (700 poin)',
+  },
+  {
+    levelRequired: 5,
+    icon: Gem,
+    nama: 'Green Legend',
+    deskripsi: 'Capai level Green Legend (1500 poin)',
+  },
+];

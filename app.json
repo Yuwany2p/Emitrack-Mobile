@@ -18,7 +18,12 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.emitrackmobile"
+      "package": "com.anonymous.emitrackmobile",
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyDFtIzi9G1HgD1XR8AJNDCgkWJX09qib70"
+        }
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
