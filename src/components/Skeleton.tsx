@@ -35,7 +35,9 @@ export function SkeletonCard({ style }: { style?: ViewStyle }) {
   );
 }
 
-export function SkeletonText({ width = '100%', style }: { width?: number | string, style?: ViewStyle }) {
+import { DimensionValue } from 'react-native';
+
+export function SkeletonText({ width = '100%', style }: { width?: DimensionValue, style?: ViewStyle }) {
   const opacity = usePulse();
   return (
     <Animated.View style={[styles.text, { opacity, width }, style]} />

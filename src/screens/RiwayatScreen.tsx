@@ -1,9 +1,13 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator, Animated, Dimensions } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Bike, Car, Bus, Navigation, Leaf, Map } from 'lucide-react-native';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { LABEL_BBM, MODA_UMUM_LABEL } from '../lib/emisi';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BlurView } from 'expo-blur';
+
 
 type Trip = {
   id: string;
@@ -39,7 +43,18 @@ export default function RiwayatScreen({ navigation }: any) {
   const [filter, setFilter] = useState<FilterJenis>('semua');
   const [trips, setTrips] = useState<Trip[]>([]);
   const [loading, setLoading] = useState(true);
+  const insets = useSafeAreaInsets();
 
+  // Animated Header Setup
+  const HEADER_HEIGHT = 90;
+  const scrollY = React.useRef(new Animated.Value(0)).current;
+  const diffClamp = Animated.diffClamp(scrollY, 0, HEADER_HEIGHT);
+  const headerOpacity = diffClamp.interpolate({
+    inputRange: [0, HEADER_HEIGHT],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+  
   useEffect(() => {
     if (user) {
       fetchTrips();
@@ -76,17 +91,38 @@ export default function RiwayatScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      <View style={styles.topbar}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.backBtn}>← Kembali</Text>
-        </TouchableOpacity>
-        <View>
-          <Text style={styles.topbarTitle}>Riwayat Perjalanan</Text>
-          <Text style={styles.topbarSub}>Total {trips.length} trip tercatat</Text>
+      <Animated.View style={{
+        position: 'absolute',
+        top: insets.top,
+        left: 0,
+        right: 0,
+        zIndex: 30,
+        height: HEADER_HEIGHT,
+        opacity: headerOpacity
+      }}>
+        <View style={{ flex: 1, paddingHorizontal: 16, justifyContent: 'center' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <TouchableOpacity onPress={() => navigation.goBack()}>
+              <Text style={styles.backBtn}>← Kembali</Text>
+            </TouchableOpacity>
+            <View>
+              <Text style={styles.topbarTitle}>Riwayat Perjalanan</Text>
+              <Text style={styles.topbarSub}>Total {trips.length} trip tercatat</Text>
+            </View>
+          </View>
         </View>
-      </View>
+      </Animated.View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16 }}>
+      <Animated.ScrollView 
+        showsVerticalScrollIndicator={false} 
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: true }
+        )}
+        scrollEventThrottle={16}
+        contentContainerStyle={{ padding: 16, paddingTop: insets.top + HEADER_HEIGHT - 25, paddingBottom: 100 + insets.bottom, minHeight: Dimensions.get('window').height + HEADER_HEIGHT }}
+      >
+
         {/* Filter */}
         <View style={styles.filterRow}>
           {([
@@ -157,17 +193,42 @@ export default function RiwayatScreen({ navigation }: any) {
         )}
 
         <View style={{ height: 24 }} />
-      </ScrollView>
+      </Animated.ScrollView>
+
+      {/* Dynamic Status Bar Overlay with translateY for native driver support */}
+      <Animated.View
+        style={{
+          position: 'absolute',
+          top: -(HEADER_HEIGHT),
+          left: 0,
+          right: 0,
+          height: insets.top + (HEADER_HEIGHT * 1.6),
+          zIndex: 20,
+          transform: [{
+            translateY: diffClamp.interpolate({
+              inputRange: [0, HEADER_HEIGHT],
+              outputRange: [0, -((HEADER_HEIGHT * 0.6) - 15)],
+              extrapolate: 'clamp',
+            })
+          }],
+        }}
+        pointerEvents="none"
+      >
+        <LinearGradient
+          colors={['rgba(255, 255, 255, 1)', 'rgba(255, 255, 255, 1)', 'rgba(255, 255, 255, 0.8)', 'rgba(255, 255, 255, 0)']}
+          locations={[0, 0.7, 0.9, 1]}
+          style={{ flex: 1 }}
+        />
+      </Animated.View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
-  topbar: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 48, paddingBottom: 12, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
-  backBtn: { fontSize: 13, color: '#1D9E75', fontWeight: '500' },
-  topbarTitle: { fontSize: 16, fontWeight: '600', color: '#1F2937' },
-  topbarSub: { fontSize: 12, color: '#9CA3AF' },
+  backBtn: { fontSize: 13, color: '#1D9E75', fontWeight: 'bold' },
+  topbarTitle: { fontSize: 24, fontWeight: 'bold', color: '#1F2937' },
+  topbarSub: { fontSize: 13, color: '#6B7280' },
   filterRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
   filterBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: '#F3F4F6' },
   filterBtnActive: { backgroundColor: '#1D9E75' },

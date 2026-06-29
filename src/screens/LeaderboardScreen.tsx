@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator, Animated, Dimensions } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Medal, Trophy, Users, Globe, Bus, Target, Award } from 'lucide-react-native';
+import { BlurView } from 'expo-blur';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 
@@ -28,6 +30,16 @@ export default function LeaderboardScreen() {
   const [totalUsers, setTotalUsers] = useState(0);
   const [totalHemat, setTotalHemat] = useState(0);
   const [totalTrips, setTotalTrips] = useState(0);
+
+  // Animated Header Setup
+  const HEADER_HEIGHT = 90;
+  const scrollY = React.useRef(new Animated.Value(0)).current;
+  const diffClamp = Animated.diffClamp(scrollY, 0, HEADER_HEIGHT);
+  const headerOpacity = diffClamp.interpolate({
+    inputRange: [0, HEADER_HEIGHT],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
 
   useEffect(() => {
     fetchLeaderboard();
@@ -73,6 +85,9 @@ export default function LeaderboardScreen() {
     }
   };
 
+  const { useSafeAreaInsets } = require('react-native-safe-area-context');
+  const insets = useSafeAreaInsets();
+
   const podium = users.slice(0, 3);
   const podiumOrder = [podium[1], podium[0], podium[2]];
   const podiumOriginalIdx = [1, 0, 2];
@@ -80,9 +95,17 @@ export default function LeaderboardScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Topbar */}
-      <View style={styles.topbar}>
-        <View>
+      {/* Animated Header */}
+      <Animated.View style={{
+        position: 'absolute',
+        top: insets.top,
+        left: 0,
+        right: 0,
+        zIndex: 30,
+        height: HEADER_HEIGHT,
+        opacity: headerOpacity
+      }}>
+        <View style={{ flex: 1, paddingHorizontal: 16, justifyContent: 'center' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <Text style={styles.topbarTitle}>Leaderboard</Text>
             <View style={styles.liveBadge}>
@@ -90,22 +113,32 @@ export default function LeaderboardScreen() {
               <Text style={styles.liveText}>LIVE</Text>
             </View>
           </View>
-          <Text style={styles.topbarSub}>Siapa yang paling hijau?</Text>
+          <View>
+            <Text style={styles.topbarSub}>Siapa yang paling hijau?</Text>
+          </View>
         </View>
-      </View>
+      </Animated.View>
 
-      {/* Tabs */}
-      <View style={styles.tabContainer}>
-        {(['semua', 'kota', 'poin'] as Tab[]).map(t => (
-          <TouchableOpacity key={t} style={[styles.tab, tab === t && styles.tabActive]} onPress={() => setTab(t)}>
-            <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>
-              {t === 'semua' ? 'Semua' : t === 'kota' ? 'Kota Saya' : 'Top Poin'}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      <Animated.ScrollView 
+        showsVerticalScrollIndicator={false} 
+        contentContainerStyle={{ padding: 16, paddingTop: insets.top + HEADER_HEIGHT - 25, paddingBottom: 100 + insets.bottom, minHeight: Dimensions.get('window').height + HEADER_HEIGHT }}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: true }
+        )}
+        scrollEventThrottle={16}
+      >
+        {/* Tabs */}
+        <View style={styles.tabContainer}>
+          {(['semua', 'kota', 'poin'] as Tab[]).map(t => (
+            <TouchableOpacity key={t} style={[styles.tab, tab === t && styles.tabActive]} onPress={() => setTab(t)}>
+              <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>
+                {t === 'semua' ? 'Semua' : t === 'kota' ? 'Kota Saya' : 'Top Poin'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16 }}>
         {loading ? (
           <ActivityIndicator size="large" color="#1D9E75" style={{ marginVertical: 40 }} />
         ) : (
@@ -220,7 +253,33 @@ export default function LeaderboardScreen() {
         )}
 
         <View style={{ height: 24 }} />
-      </ScrollView>
+      </Animated.ScrollView>
+
+      {/* Dynamic Status Bar Overlay with translateY for native driver support */}
+      <Animated.View
+        style={{
+          position: 'absolute',
+          top: -(HEADER_HEIGHT),
+          left: 0,
+          right: 0,
+          height: insets.top + (HEADER_HEIGHT * 1.6),
+          zIndex: 20,
+          transform: [{
+            translateY: diffClamp.interpolate({
+              inputRange: [0, HEADER_HEIGHT],
+              outputRange: [0, -((HEADER_HEIGHT * 0.6) - 15)],
+              extrapolate: 'clamp',
+            })
+          }],
+        }}
+        pointerEvents="none"
+      >
+        <LinearGradient
+          colors={['rgba(255, 255, 255, 1)', 'rgba(255, 255, 255, 1)', 'rgba(255, 255, 255, 0.8)', 'rgba(255, 255, 255, 0)']}
+          locations={[0, 0.7, 0.9, 1]}
+          style={{ flex: 1 }}
+        />
+      </Animated.View>
     </View>
   );
 }

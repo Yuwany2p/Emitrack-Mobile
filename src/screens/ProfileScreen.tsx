@@ -9,8 +9,14 @@ import {
   Modal,
   TextInput,
   RefreshControl,
+  Animated,
+  Dimensions,
+  Image,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { useAuth } from '../context/AuthContext';
+
 import {
   MapPin,
   Edit3,
@@ -124,13 +130,23 @@ function formatTanggal(iso: string) {
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
+  const { useSafeAreaInsets } = require('react-native-safe-area-context');
+  const insets = useSafeAreaInsets();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [stats, setStats] = useState<TripStats | null>(null);
   const [rankingInfo, setRankingInfo] = useState<{ rank: number; total: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Edit state
+  // Animated Header Setup
+  const HEADER_HEIGHT = 90;
+  const scrollY = React.useRef(new Animated.Value(0)).current;
+  const diffClamp = Animated.diffClamp(scrollY, 0, HEADER_HEIGHT);
+  const headerOpacity = diffClamp.interpolate({
+    inputRange: [0, HEADER_HEIGHT],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
   const [editing, setEditing] = useState(false);
   const [editUsername, setEditUsername] = useState('');
   const [saving, setSaving] = useState(false);
@@ -263,7 +279,9 @@ export default function ProfileScreen() {
     .filter(c => c.toLowerCase().includes(searchCity.toLowerCase()))
     .slice(0, 50);
 
-  const displayName = profile?.full_name || profile?.username || user?.email?.split('@')[0] || 'User';
+  const googleName = user?.user_metadata?.full_name ?? user?.user_metadata?.name ?? null;
+  const googleAvatar = user?.user_metadata?.avatar_url ?? user?.user_metadata?.picture ?? null;
+  const displayName = profile?.full_name || googleName || profile?.username || user?.email?.split('@')[0] || 'User';
   const avatarLetter = displayName[0]?.toUpperCase() ?? 'U';
 
   // ── LOADING STATE ──
@@ -301,19 +319,35 @@ export default function ProfileScreen() {
 
   return (
     <>
-      <ScrollView
+      <Animated.View style={{
+        position: 'absolute',
+        top: insets.top,
+        left: 0,
+        right: 0,
+        zIndex: 30,
+        height: HEADER_HEIGHT,
+        opacity: headerOpacity
+      }}>
+        <View style={{ flex: 1, paddingHorizontal: 16, justifyContent: 'center' }}>
+          <View>
+            <Text style={styles.topBarTitle}>Profil Saya</Text>
+            <Text style={styles.topBarSub}>Kelola akun dan pengaturan</Text>
+          </View>
+        </View>
+      </Animated.View>
+
+      <Animated.ScrollView
         style={styles.container}
-        contentContainerStyle={{ paddingBottom: 100 }}
+        contentContainerStyle={{ paddingTop: insets.top + HEADER_HEIGHT - 25, paddingBottom: 100 + insets.bottom, minHeight: Dimensions.get('window').height + HEADER_HEIGHT }}
         showsVerticalScrollIndicator={false}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: true }
+        )}
+        scrollEventThrottle={16}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#1D9E75']} />}
       >
-        {/* ── TOP BAR ── */}
-        <View style={styles.topBar}>
-          <Text style={styles.topBarTitle}>Profil Saya</Text>
-          <Text style={styles.topBarSub}>Statistik & pencapaian personalmu</Text>
-        </View>
-
-        <View style={{ padding: 16, gap: 20 }}>
+        <View style={{ padding: 16, paddingTop: 0, gap: 20 }}>
 
           {/* ── HEADER PROFIL ── */}
           <View style={styles.card}>
@@ -353,9 +387,13 @@ export default function ProfileScreen() {
               // Display Mode
               <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 16 }}>
                 {/* Avatar */}
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>{avatarLetter}</Text>
-                </View>
+                {googleAvatar ? (
+                  <Image source={{ uri: googleAvatar }} style={styles.avatarImage} />
+                ) : (
+                  <View style={styles.avatar}>
+                    <Text style={styles.avatarText}>{avatarLetter}</Text>
+                  </View>
+                )}
                 {/* Info */}
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={styles.displayName} numberOfLines={1}>{displayName}</Text>
@@ -570,8 +608,34 @@ export default function ProfileScreen() {
           </View>
 
         </View>
-      </ScrollView>
+      </Animated.ScrollView>
 
+      {/* Dynamic Status Bar Overlay with translateY for native driver support */}
+      <Animated.View
+        style={{
+          position: 'absolute',
+          top: -(HEADER_HEIGHT),
+          left: 0,
+          right: 0,
+          height: insets.top + (HEADER_HEIGHT * 1.6),
+          zIndex: 20,
+          transform: [{
+            translateY: diffClamp.interpolate({
+              inputRange: [0, HEADER_HEIGHT],
+              outputRange: [0, -((HEADER_HEIGHT * 0.6) - 15)],
+              extrapolate: 'clamp',
+            })
+          }],
+        }}
+        pointerEvents="none"
+      >
+        <LinearGradient
+          colors={['rgba(255, 255, 255, 1)', 'rgba(255, 255, 255, 1)', 'rgba(255, 255, 255, 0.8)', 'rgba(255, 255, 255, 0)']}
+          locations={[0, 0.7, 0.9, 1]}
+          style={{ flex: 1 }}
+        />
+      </Animated.View>
+      
       {/* ── CITY MODAL ── */}
       <Modal visible={showCityModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
@@ -668,6 +732,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 8,
     elevation: 4,
+  },
+  avatarImage: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
   },
   avatarText: {
     fontSize: 28,

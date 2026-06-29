@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, View, ScrollView, TextInput, TouchableOpacity, Alert } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TextInput, TouchableOpacity, Alert, Animated, Dimensions } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Bike, Car, Train, Bus, Check, Calculator, Leaf, Coins, Trophy, BarChart2, Droplets, TreePine, Plane } from 'lucide-react-native';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { hitungEmisi, RATA_RATA_NASIONAL, BBM_OPTIONS, LABEL_BBM, CONTOH_MEREK, KONSUMSI } from '../lib/emisi';
 import { getLevelByPoin } from '../lib/level';
 import { showToast } from '../components/Toast';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BlurView } from 'expo-blur';
 
 const TRANSPORTASI = [
   { value: 'motor', label: 'Motor', icon: Bike, poin: 10, isPrivate: true },
@@ -28,12 +31,23 @@ const HARGA_BBM_DEFAULT: Record<string, number> = {
 
 export default function KalkulatorScreen({ navigation }: any) {
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<'hitung' | 'proyeksi'>('hitung');
   const [jenis, setJenis] = useState('motor');
   const [bbm, setBbm] = useState('ron92');
   const [jarakText, setJarakText] = useState('20');
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // Animated Header Setup
+  const HEADER_HEIGHT = 90;
+  const scrollY = React.useRef(new Animated.Value(0)).current;
+  const diffClamp = Animated.diffClamp(scrollY, 0, HEADER_HEIGHT);
+  const headerOpacity = diffClamp.interpolate({
+    inputRange: [0, HEADER_HEIGHT],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
 
   const jarak = Number(jarakText) || 0;
   const selectedModa = TRANSPORTASI.find(t => t.value === jenis)!;
@@ -54,7 +68,7 @@ export default function KalkulatorScreen({ navigation }: any) {
   const hariSetahun = Math.round((hariMggNum / 7) * 365);
   const emisiHariProyeksi = hitungEmisi(jenis, bbm, jarakHarianNum);
   const emisiTahunProyeksi = Number((emisiHariProyeksi * hariSetahun).toFixed(1));
-  
+
   const konsumsiKey = `${jenis}_${bbm}`;
   const konsumsiPerKm = KONSUMSI[konsumsiKey as keyof typeof KONSUMSI] ?? 0.1;
   const konsumsiLiterTahun = Number((jarakHarianNum * konsumsiPerKm * hariSetahun).toFixed(0));
@@ -94,29 +108,51 @@ export default function KalkulatorScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      <View style={styles.topbar}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.backBtn}>← Kembali</Text>
-        </TouchableOpacity>
-        <View>
-          <Text style={styles.topbarTitle}>Kalkulator Emisi</Text>
-          <Text style={styles.topbarSub}>Berdasarkan IPCC 2021 & ESDM RI</Text>
+      {/* Animated Header */}
+      <Animated.View style={{
+        position: 'absolute',
+        top: insets.top,
+        left: 0,
+        right: 0,
+        zIndex: 30,
+        height: HEADER_HEIGHT,
+        opacity: headerOpacity
+      }}>
+        <View style={{ flex: 1, paddingHorizontal: 16, justifyContent: 'center' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <TouchableOpacity onPress={() => navigation.goBack()}>
+              <Text style={styles.backBtn}>← Kembali</Text>
+            </TouchableOpacity>
+            <View>
+              <Text style={styles.topbarTitle}>Kalkulator Emisi</Text>
+              <Text style={styles.topbarSub}>Berdasarkan IPCC 2021 & ESDM RI</Text>
+            </View>
+          </View>
         </View>
-      </View>
+      </Animated.View>
 
-      <View style={styles.tabContainer}>
-        <TouchableOpacity style={[styles.tabBtn, activeTab === 'hitung' && styles.tabBtnActive]} onPress={() => setActiveTab('hitung')}>
-          <Calculator color={activeTab === 'hitung' ? '#1D9E75' : '#6B7280'} size={16} />
-          <Text style={[styles.tabText, activeTab === 'hitung' && styles.tabTextActive]}>Hitung Emisi</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.tabBtn, activeTab === 'proyeksi' && styles.tabBtnActive]} onPress={() => setActiveTab('proyeksi')}>
-          <BarChart2 color={activeTab === 'proyeksi' ? '#1D9E75' : '#6B7280'} size={16} />
-          <Text style={[styles.tabText, activeTab === 'proyeksi' && styles.tabTextActive]}>Proyeksi Tahunan</Text>
-        </TouchableOpacity>
-      </View>
+      <Animated.ScrollView
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + HEADER_HEIGHT - 25, paddingBottom: 100 + insets.bottom, minHeight: Dimensions.get('window').height + HEADER_HEIGHT }]}
+        showsVerticalScrollIndicator={false}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: true }
+        )}
+        scrollEventThrottle={16}
+      >
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.card}>
+        <View style={[styles.tabContainer, { paddingHorizontal: 16 }]}>
+          <TouchableOpacity style={[styles.tabBtn, activeTab === 'hitung' && styles.tabBtnActive]} onPress={() => setActiveTab('hitung')}>
+            <Calculator color={activeTab === 'hitung' ? '#1D9E75' : '#6B7280'} size={16} />
+            <Text style={[styles.tabText, activeTab === 'hitung' && styles.tabTextActive]}>Hitung Emisi</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.tabBtn, activeTab === 'proyeksi' && styles.tabBtnActive]} onPress={() => setActiveTab('proyeksi')}>
+            <BarChart2 color={activeTab === 'proyeksi' ? '#1D9E75' : '#6B7280'} size={16} />
+            <Text style={[styles.tabText, activeTab === 'proyeksi' && styles.tabTextActive]}>Proyeksi Tahunan</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={[styles.card, { marginHorizontal: 16 }]}>
           <Text style={styles.cardTitle}>Moda Transportasi</Text>
           <View style={styles.modaGrid}>
             {TRANSPORTASI.map(t => {
@@ -132,7 +168,7 @@ export default function KalkulatorScreen({ navigation }: any) {
         </View>
 
         {selectedModa.isPrivate && (
-          <View style={styles.card}>
+          <View style={[styles.card, { marginHorizontal: 16 }]}>
             <Text style={styles.cardTitle}>Bahan Bakar</Text>
             <View style={styles.modaGrid}>
               {BBM_OPTIONS[jenis]?.map(b => (
@@ -153,7 +189,7 @@ export default function KalkulatorScreen({ navigation }: any) {
             <View style={styles.resultCard}>
               <Text style={styles.cardTitle}>Hasil Estimasi CO₂</Text>
               <View style={styles.modaGrid}>
-                {[ { label: 'Harian', val: emisiHarian, color: '#D97706' }, { label: 'Bulanan', val: emisiBulanan, color: '#1D9E75' }, { label: 'Tahunan', val: emisiTahunan, color: '#EF4444' } ].map(s => (
+                {[{ label: 'Harian', val: emisiHarian, color: '#D97706' }, { label: 'Bulanan', val: emisiBulanan, color: '#1D9E75' }, { label: 'Tahunan', val: emisiTahunan, color: '#EF4444' }].map(s => (
                   <View key={s.label} style={{ flex: 1, alignItems: 'center' }}>
                     <Text style={{ fontSize: 16, fontWeight: 'bold', color: s.color }}>{s.val}</Text>
                     <Text style={{ fontSize: 10, color: '#9CA3AF' }}>{s.label} (kg)</Text>
@@ -185,37 +221,62 @@ export default function KalkulatorScreen({ navigation }: any) {
                 <Text style={{ fontSize: 10 }}>kg CO₂</Text>
               </View>
               <View style={[styles.resultCard, { flex: 1 }]}>
-                <Text style={{ fontWeight: 'bold', color: '#2563EB' }}>{biayaBbmTahun >= 1000000 ? `${(biayaBbmTahun/1000000).toFixed(1)} jt` : `${Math.round(biayaBbmTahun/1000)} rb`}</Text>
+                <Text style={{ fontWeight: 'bold', color: '#2563EB' }}>{biayaBbmTahun >= 1000000 ? `${(biayaBbmTahun / 1000000).toFixed(1)} jt` : `${Math.round(biayaBbmTahun / 1000)} rb`}</Text>
                 <Text style={{ fontSize: 10 }}>Biaya BBM</Text>
               </View>
             </View>
             <View style={styles.resultCard}>
               <View style={styles.modaGrid}>
                 <View style={{ alignItems: 'center', flex: 1 }}><TreePine color="#1D9E75" /><Text style={{ fontSize: 10 }}>{pohon} pohon</Text></View>
-                <View style={{ alignItems: 'center', flex: 1 }}><Droplets color="#3B82F6" /><Text style={{ fontSize: 10 }}>{Math.round(airLiter/1000)}k L air</Text></View>
+                <View style={{ alignItems: 'center', flex: 1 }}><Droplets color="#3B82F6" /><Text style={{ fontSize: 10 }}>{Math.round(airLiter / 1000)}k L air</Text></View>
               </View>
             </View>
           </>
         )}
-      </ScrollView>
+      </Animated.ScrollView>
+
+      {/* Dynamic Status Bar Overlay with translateY for native driver support */}
+      <Animated.View
+        style={{
+          position: 'absolute',
+          top: -(HEADER_HEIGHT),
+          left: 0,
+          right: 0,
+          height: insets.top + (HEADER_HEIGHT * 1.6),
+          zIndex: 20,
+          transform: [{
+            translateY: diffClamp.interpolate({
+              inputRange: [0, HEADER_HEIGHT],
+              outputRange: [0, -((HEADER_HEIGHT * 0.6) - 15)],
+              extrapolate: 'clamp',
+            })
+          }],
+        }}
+        pointerEvents="none"
+      >
+        <LinearGradient
+          colors={['rgba(255, 255, 255, 1)', 'rgba(255, 255, 255, 1)', 'rgba(255, 255, 255, 0.8)', 'rgba(255, 255, 255, 0)']}
+          locations={[0, 0.7, 0.9, 1]}
+          style={{ flex: 1 }}
+        />
+      </Animated.View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
-  topbar: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 48, paddingBottom: 12, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
-  backBtn: { fontSize: 13, color: '#1D9E75', fontWeight: '500' },
-  topbarTitle: { fontSize: 16, fontWeight: '600', color: '#1F2937' },
-  topbarSub: { fontSize: 12, color: '#9CA3AF' },
-  tabContainer: { flexDirection: 'row', backgroundColor: '#FFFFFF', paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
-  tabBtn: { flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: 14, borderBottomWidth: 2, borderBottomColor: 'transparent' },
-  tabBtnActive: { borderBottomColor: '#1D9E75' },
-  tabText: { fontSize: 14, fontWeight: '500', color: '#6B7280' },
-  tabTextActive: { color: '#1D9E75', fontWeight: 'bold' },
-  scrollContent: { padding: 16, paddingBottom: 40 },
-  card: { backgroundColor: '#FFFFFF', borderRadius: 14, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: '#F3F4F6' },
-  cardTitle: { fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 10 },
+  backBtn: { fontSize: 13, color: '#1D9E75', fontWeight: 'bold' },
+  topbarTitle: { fontSize: 24, fontWeight: 'bold', color: '#1F2937' },
+  topbarSub: { fontSize: 13, color: '#6B7280' },
+  tabContainer: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+  tabBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB' },
+  tabBtnActive: { backgroundColor: '#E1F5EE', borderColor: '#1D9E75' },
+  tabText: { fontSize: 13, fontWeight: '600', color: '#6B7280' },
+  tabTextActive: { color: '#1D9E75' },
+  scrollContent: { paddingBottom: 100 },
+  card: { backgroundColor: 'white', borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#F3F4F6' },
+  cardTitle: { fontSize: 14, fontWeight: 'bold', color: '#374151', marginBottom: 12 },
   modaGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   modaBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, backgroundColor: '#F9FAFB' },
   modaBtnActive: { backgroundColor: '#1D9E75' },

@@ -9,10 +9,12 @@ import { hitungJarakKumulatif, validasiPerjalanan, isOffRoute } from '../lib/gps
 import { hitungEmisi, rekomendasiRute, Rekomendasi, RATA_RATA_NASIONAL } from '../lib/emisi';
 import { showToast } from '../components/Toast';
 import LocationInput, { NominatimResult } from '../components/LocationInput';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { height: windowHeight } = Dimensions.get('window');
 
 export default function MapScreen({ navigation }: any) {
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
 
   // -- State Peta & GPS Default --
@@ -522,7 +524,7 @@ export default function MapScreen({ navigation }: any) {
 
       {/* 2. PANEL PENCARIAN (Floating di Atas) */}
       {!isNavigating && !isPickingMap && (
-        <View style={styles.topSearchPanel}>
+        <View style={[styles.topSearchPanel, { top: insets.top + 16 }]}>
           <View style={styles.searchCard}>
             <View style={{ zIndex: 2 }}>
               <LocationInput
@@ -554,7 +556,7 @@ export default function MapScreen({ navigation }: any) {
 
       {/* 3. PANEL REKOMENDASI (Bottom Sheet Swipeable) */}
       {!isNavigating && !isPickingMap && ruteOSRM && (
-        <Animated.View style={[styles.bottomSheetPanel, { transform: [{ translateY }] }]}>
+        <Animated.View style={[styles.bottomSheetPanel, { bottom: insets.bottom + 100, transform: [{ translateY }] }]}>
           <View {...panResponder.panHandlers} style={styles.sheetHeaderArea}>
             <View style={styles.sheetHandle} />
             <Text style={styles.sheetTitle}>Rekomendasi Rute Hijau</Text>
@@ -647,11 +649,10 @@ export default function MapScreen({ navigation }: any) {
         </>
       )}
 
-      {/* 4. OVERLAY NAVIGASI AKTIF */}
+      {/* 4. OVERLAY SAAT NAVIGASI BERJALAN */}
       {isNavigating && (
         <>
-          {/* Top Info Bar */}
-          <View style={styles.navTopOverlay}>
+          <View style={[styles.navTopOverlay, { top: insets.top + 16 }]}>
             <View style={styles.navTopCard}>
               <View style={styles.navHeader}>
                 <View style={styles.navHeaderLeft}>
@@ -694,8 +695,8 @@ export default function MapScreen({ navigation }: any) {
             </View>
           </View>
 
-          {/* Bottom Action Bar */}
-          <View style={styles.navBottomOverlay}>
+          {/* Bottom Card Navigasi */}
+          <View style={[styles.navBottomOverlay, { bottom: insets.bottom + 100 }]}>
             <View style={styles.navBottomCard}>
               {persenProgress < 50 && (
                 <Text style={styles.navHint}>Tempuh minimal 50% rute untuk menyelesaikan</Text>

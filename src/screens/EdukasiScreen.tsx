@@ -1,6 +1,10 @@
 import React from 'react';
-import { StyleSheet, Text, View, ScrollView } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, Animated, Dimensions } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Info, Leaf, Car, TreePine as Trees, TrendingUp, AlertTriangle, Bus, Bike, Wind, Zap, Users, Target, BookOpen } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BlurView } from 'expo-blur';
+
 
 const FAKTA = [
   { icon: Car, text: 'Kendaraan pribadi menyumbang 47% emisi CO₂ di sektor transportasi Indonesia.', source: 'Sumber: KLHK, 2022' },
@@ -18,19 +22,53 @@ const TIPS = [
 ];
 
 export default function EdukasiScreen({ navigation }: any) {
+  const insets = useSafeAreaInsets();
+
+  // Animated Header Setup
+  const HEADER_HEIGHT = 90;
+  const scrollY = React.useRef(new Animated.Value(0)).current;
+  const diffClamp = Animated.diffClamp(scrollY, 0, HEADER_HEIGHT);
+  const headerOpacity = diffClamp.interpolate({
+    inputRange: [0, HEADER_HEIGHT],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+
   return (
     <View style={styles.container}>
-      <View style={styles.topbar}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <BookOpen color="#1F2937" size={18} />
-          <View>
-            <Text style={styles.topbarTitle}>Edukasi & Tips</Text>
-            <Text style={styles.topbarSub}>Pahami emisimu, ubah kebiasaanmu</Text>
+      {/* Animated Header */}
+      <Animated.View style={{
+        position: 'absolute',
+        top: insets.top,
+        left: 0,
+        right: 0,
+        zIndex: 30,
+        height: HEADER_HEIGHT,
+        opacity: headerOpacity
+      }}>
+        <View style={{ flex: 1, paddingHorizontal: 16, justifyContent: 'center' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: '#E0F2FE', justifyContent: 'center', alignItems: 'center' }}>
+              <BookOpen color="#0EA5E9" size={20} />
+            </View>
+            <View>
+              <Text style={styles.topbarTitle}>Edukasi & Tips</Text>
+              <Text style={styles.topbarSub}>Tingkatkan pengetahuan Anda hari ini.</Text>
+            </View>
           </View>
         </View>
-      </View>
+      </Animated.View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16 }}>
+      <Animated.ScrollView 
+        showsVerticalScrollIndicator={false} 
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: true }
+        )}
+        scrollEventThrottle={16}
+        contentContainerStyle={{ padding: 16, paddingTop: insets.top + HEADER_HEIGHT - 25, paddingBottom: 100 + insets.bottom, minHeight: Dimensions.get('window').height + HEADER_HEIGHT }}
+      >
+
         {/* Tahukah Kamu */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
           <Info color="#1D9E75" size={18} />
@@ -114,16 +152,41 @@ export default function EdukasiScreen({ navigation }: any) {
         ))}
 
         <View style={{ height: 24 }} />
-      </ScrollView>
+      </Animated.ScrollView>
+
+      {/* Dynamic Status Bar Overlay with translateY for native driver support */}
+      <Animated.View
+        style={{
+          position: 'absolute',
+          top: -(HEADER_HEIGHT),
+          left: 0,
+          right: 0,
+          height: insets.top + (HEADER_HEIGHT * 1.6),
+          zIndex: 20,
+          transform: [{
+            translateY: diffClamp.interpolate({
+              inputRange: [0, HEADER_HEIGHT],
+              outputRange: [0, -((HEADER_HEIGHT * 0.6) - 15)],
+              extrapolate: 'clamp',
+            })
+          }],
+        }}
+        pointerEvents="none"
+      >
+        <LinearGradient
+          colors={['rgba(255, 255, 255, 1)', 'rgba(255, 255, 255, 1)', 'rgba(255, 255, 255, 0.8)', 'rgba(255, 255, 255, 0)']}
+          locations={[0, 0.7, 0.9, 1]}
+          style={{ flex: 1 }}
+        />
+      </Animated.View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
-  topbar: { paddingHorizontal: 16, paddingTop: 48, paddingBottom: 12, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
-  topbarTitle: { fontSize: 16, fontWeight: '600', color: '#1F2937' },
-  topbarSub: { fontSize: 12, color: '#9CA3AF' },
+  topbarTitle: { fontSize: 24, fontWeight: 'bold', color: '#1F2937' },
+  topbarSub: { fontSize: 13, color: '#9CA3AF' },
   sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#1F2937' },
 
   // Fakta

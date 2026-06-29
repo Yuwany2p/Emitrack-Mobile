@@ -10,211 +10,209 @@ import LeaderboardScreen from '../screens/LeaderboardScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import KalkulatorScreen from '../screens/KalkulatorScreen';
 import EdukasiScreen from '../screens/EdukasiScreen';
-import RewardsScreen from '../screens/RewardsScreen';
 import RiwayatScreen from '../screens/RiwayatScreen';
 
 const Tab = createMaterialTopTabNavigator();
 const Stack = createNativeStackNavigator();
 
 const { width: windowWidth } = Dimensions.get('window');
-const TAB_BAR_MARGIN_LEFT = 20;
+const TAB_BAR_MARGIN_LEFT = 32;
 const TAB_BAR_WIDTH = windowWidth - (TAB_BAR_MARGIN_LEFT * 2);
 const TAB_WIDTH = TAB_BAR_WIDTH / 4;
-const INDICATOR_WIDTH = 64; 
+const INDICATOR_WIDTH = 64;
 const INDICATOR_MARGIN = (TAB_WIDTH - INDICATOR_WIDTH) / 2;
 
 function CustomTabBar({ state, descriptors, navigation, position }: any) {
-  const [isDragging, setIsDragging] = useState(false);
-  const dragX = useRef(new Animated.Value(0)).current;
-  const lastDragX = useRef(0); // Lacak posisi terakhir gelembung secara akurat
+  const bubbleX = useRef(new Animated.Value(state.index * TAB_WIDTH)).current;
+  const lastDragX = useRef(0);
 
-  // PanResponder khusus untuk mendeteksi swipe/slide jari di atas Tab Bar
+  // 1. TAMBAHKAN DUA REF INI UNTUK MENCEGAH STALE CLOSURE
+  const stateRef = useRef(state);
+  const navRef = useRef(navigation);
+
+  // 2. SELALU PERBARUI REF SETIAP KALI PINDAH TAB
+  React.useEffect(() => {
+    stateRef.current = state;
+    navRef.current = navigation;
+  }, [state, navigation]);
+
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => false, 
+      onStartShouldSetPanResponder: () => false,
       onMoveShouldSetPanResponder: (evt, gestureState) => {
         return Math.abs(gestureState.dx) > 5;
       },
       onPanResponderGrant: (evt) => {
-        setIsDragging(true);
-        // Posisikan gelembung tepat di bawah jari saat mulai menggeser
         let x = evt.nativeEvent.pageX - TAB_BAR_MARGIN_LEFT - INDICATOR_MARGIN - (INDICATOR_WIDTH / 2);
-        
         const maxTranslateX = TAB_BAR_WIDTH - INDICATOR_WIDTH - (INDICATOR_MARGIN * 2);
         if (x < 0) x = 0;
         if (x > maxTranslateX) x = maxTranslateX;
 
-        dragX.setValue(x);
+        bubbleX.setValue(x);
         lastDragX.current = x;
       },
       onPanResponderMove: (evt, gestureState) => {
-        // Gelembung mengikuti pergerakan jari secara realtime
         let x = gestureState.moveX - TAB_BAR_MARGIN_LEFT - INDICATOR_MARGIN - (INDICATOR_WIDTH / 2);
-        
-        // Batasi agar gelembung tidak keluar dari area tab bar
         const maxTranslateX = TAB_BAR_WIDTH - INDICATOR_WIDTH - (INDICATOR_MARGIN * 2);
         if (x < 0) x = 0;
         if (x > maxTranslateX) x = maxTranslateX;
-        
-        dragX.setValue(x);
+
+        bubbleX.setValue(x);
         lastDragX.current = x;
       },
       onPanResponderRelease: (evt, gestureState) => {
-        setIsDragging(false);
-        
-        // Gunakan posisi terakhir gelembung (yang sangat akurat) daripada kordinat jari saat dilepas
-        let index = Math.round(lastDragX.current / TAB_WIDTH);
-        
-        // Pastikan index valid
-        if (index < 0) index = 0;
-        if (index >= state.routes.length) index = state.routes.length - 1;
+        // 3. GUNAKAN DATA DARI REF, BUKAN DATA LAMA
+        const currentState = stateRef.current;
+        const currentNav = navRef.current;
 
-        if (index !== state.index) {
-          const targetRoute = state.routes[index];
-          const event = navigation.emit({
+        let index = Math.round(lastDragX.current / TAB_WIDTH);
+        if (index < 0) index = 0;
+        if (index >= currentState.routes.length) index = currentState.routes.length - 1;
+
+        Animated.spring(bubbleX, {
+          toValue: index * TAB_WIDTH,
+          useNativeDriver: false,
+          friction: 7,
+          tension: 40
+        }).start();
+
+        // 4. CEK MENGGUNAKAN currentState.index
+        if (index !== currentState.index) {
+          const targetRoute = currentState.routes[index];
+          const event = currentNav.emit({
             type: 'tabPress',
             target: targetRoute.key,
             canPreventDefault: true,
           });
 
           if (!event.defaultPrevented) {
-            navigation.navigate({ name: targetRoute.name, merge: true });
+            currentNav.navigate({ name: targetRoute.name, merge: true });
           }
         }
       },
       onPanResponderTerminate: () => {
-        setIsDragging(false);
+        // 5. PASTIKAN GELEMBUNG KEMBALI KE POSISI ASLI JIKA SWIPE BATAL
+        let index = stateRef.current.index;
+        Animated.spring(bubbleX, {
+          toValue: index * TAB_WIDTH,
+          useNativeDriver: false,
+          friction: 7,
+          tension: 40
+        }).start();
       }
     })
   ).current;
 
-  // Animasi untuk menggeser gelembung sesuai posisi halaman (saat layar di-swipe atau diklik)
-  // PENTING: Gunakan useMemo agar node animasi tidak di-reset setiap kali komponen merender ulang!
-  const defaultTranslateX = React.useMemo(() => {
-    return position.interpolate({
-      inputRange: state.routes.map((_: any, i: number) => i),
-      outputRange: state.routes.map((_: any, i: number) => i * TAB_WIDTH),
-    });
-  }, [position, state.routes, TAB_WIDTH]);
+  React.useEffect(() => {
+    Animated.spring(bubbleX, {
+      toValue: state.index * TAB_WIDTH,
+      useNativeDriver: false,
+      friction: 7,
+      tension: 40
+    }).start();
+  }, [state.index]);
 
   const focusedOptions = descriptors[state.routes[state.index].key].options;
   if (focusedOptions.tabBarStyle?.display === 'none') {
     return null;
   }
 
+  const { BlurView } = require('expo-blur');
+  const { useSafeAreaInsets } = require('react-native-safe-area-context');
+  const insets = useSafeAreaInsets();
+
+  const AnimatedBlurView = Animated.createAnimatedComponent(BlurView);
+
   return (
-    <View
+    <Animated.View
       {...panResponder.panHandlers}
       style={{
         position: 'absolute',
-        bottom: 24,
+        bottom: insets.bottom + 16,
         left: TAB_BAR_MARGIN_LEFT,
-        right: 20,
-        height: 70,
-        backgroundColor: '#FFFFFF',
-        borderRadius: 34,
-        elevation: 10,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.15,
-        shadowRadius: 12,
-        flexDirection: 'row',
-        alignItems: 'center',
+        right: TAB_BAR_MARGIN_LEFT,
+        height: 64,
+        borderRadius: 32,
+        overflow: 'hidden',
+        borderColor: 'rgba(0,0,0,0.1)',
+        borderWidth: 1,
       }}
     >
-      {/* Gelembung Utama (Sinkron dengan geser layar) */}
-      <Animated.View
+      <BlurView
+        intensity={100}
+        tint="light"
         style={{
-          position: 'absolute',
-          bottom: 10,
-          left: INDICATOR_MARGIN,
-          width: INDICATOR_WIDTH,
-          height: 50,
-          borderRadius: 16,
-          backgroundColor: '#E1F5EE',
-          transform: [{ translateX: defaultTranslateX }],
-          opacity: isDragging ? 0 : 1, // Sembunyikan kalau lagi didrag manual
+          flex: 1,
+          backgroundColor: 'rgba(255, 255, 255, 0.85)',
+          flexDirection: 'row',
+          alignItems: 'center',
         }}
-      />
+      >
+        {/* Gelembung Utama yang melayang mulus */}
+        <AnimatedBlurView
+          intensity={50}
+          tint="light"
+          style={{
+            position: 'absolute',
+            bottom: 8,
+            left: INDICATOR_MARGIN,
+            width: INDICATOR_WIDTH,
+            height: 48,
+            borderRadius: 24,
+            backgroundColor: 'rgba(29, 158, 117, 0.2)',
+            overflow: 'hidden',
+            transform: [{ translateX: bubbleX }],
+          }}
+        />
 
-      {/* Gelembung Manual (Sinkron dengan tarikan jari di Tab Bar) */}
-      <Animated.View
-        style={{
-          position: 'absolute',
-          bottom: 10,
-          left: INDICATOR_MARGIN,
-          width: INDICATOR_WIDTH,
-          height: 50,
-          borderRadius: 16,
-          backgroundColor: '#E1F5EE',
-          transform: [{ translateX: dragX }],
-          opacity: isDragging ? 1 : 0, // Munculkan hanya saat didrag
-        }}
-      />
+        {/* Ikon & Teks Menu */}
+        {state.routes.map((route: any, index: number) => {
+          const isFocused = state.index === index;
 
-      {/* Ikon & Teks Menu */}
-      {state.routes.map((route: any, index: number) => {
-        const isFocused = state.index === index;
-        
-        let IconComponent = Home;
-        if (route.name === 'Peta') IconComponent = Map;
-        else if (route.name === 'Leaderboard') IconComponent = Trophy;
-        else if (route.name === 'Profil') IconComponent = User;
+          let IconComponent = Home;
+          if (route.name === 'Peta') IconComponent = Map;
+          else if (route.name === 'Leaderboard') IconComponent = Trophy;
+          else if (route.name === 'Profil') IconComponent = User;
 
-        const onPress = () => {
-          const event = navigation.emit({
-            type: 'tabPress',
-            target: route.key,
-            canPreventDefault: true,
-          });
-
-          if (!isFocused && !event.defaultPrevented) {
-            navigation.navigate({ name: route.name, merge: true });
-          }
-        };
-
-        const tabCenter = index * TAB_WIDTH;
-        const scale = isDragging
-          ? dragX.interpolate({
-              inputRange: [tabCenter - TAB_WIDTH, tabCenter, tabCenter + TAB_WIDTH],
-              outputRange: [1, 1.25, 1],
-              extrapolate: 'clamp',
-            })
-          : position.interpolate({
-              inputRange: [index - 1, index, index + 1],
-              outputRange: [1, 1.25, 1],
-              extrapolate: 'clamp',
+          const onPress = () => {
+            const event = navigation.emit({
+              type: 'tabPress',
+              target: route.key,
+              canPreventDefault: true,
             });
 
-        return (
-          <TouchableOpacity
-            key={route.key}
-            onPress={onPress}
-            activeOpacity={0.8}
-            style={{
-              flex: 1,
-              alignItems: 'center',
-              justifyContent: 'center',
-              height: '100%',
-            }}
-          >
-            <Animated.View style={{ alignItems: 'center', justifyContent: 'center', transform: [{ scale }] }}>
-              <View style={{ alignItems: 'center', justifyContent: 'center', height: 32 }}>
-                <IconComponent color={isFocused ? '#1D9E75' : '#6B7280'} size={22} strokeWidth={isFocused ? 2.5 : 2} />
-              </View>
-              <Text style={{
-                fontSize: 10,
-                fontWeight: isFocused ? '700' : '500',
-                color: isFocused ? '#1F2937' : '#6B7280',
-                marginTop: 2,
-              }}>
-                {route.name}
-              </Text>
-            </Animated.View>
-          </TouchableOpacity>
-        );
-      })}
-    </View>
+            if (!isFocused && !event.defaultPrevented) {
+              navigation.navigate({ name: route.name, merge: true });
+            }
+          };
+
+          const tabCenter = index * TAB_WIDTH;
+          const scale = bubbleX.interpolate({
+            inputRange: [tabCenter - TAB_WIDTH, tabCenter, tabCenter + TAB_WIDTH],
+            outputRange: [1, 1.25, 1],
+            extrapolate: 'clamp',
+          });
+
+          return (
+            <TouchableOpacity
+              key={route.key}
+              onPress={onPress}
+              activeOpacity={0.8}
+              style={{
+                flex: 1,
+                alignItems: 'center',
+                justifyContent: 'center',
+                height: '100%',
+              }}
+            >
+              <Animated.View style={{ alignItems: 'center', justifyContent: 'center', transform: [{ scale }] }}>
+                <IconComponent color={isFocused ? '#1D9E75' : '#6B7280'} size={24} strokeWidth={isFocused ? 2.5 : 2} />
+              </Animated.View>
+            </TouchableOpacity>
+          );
+        })}
+      </BlurView>
+    </Animated.View>
   );
 }
 
@@ -224,7 +222,6 @@ function DashboardStack() {
       <Stack.Screen name="DashboardHome" component={DashboardScreen} />
       <Stack.Screen name="Kalkulator" component={KalkulatorScreen} />
       <Stack.Screen name="Edukasi" component={EdukasiScreen} />
-      <Stack.Screen name="Rewards" component={RewardsScreen} />
       <Stack.Screen name="Riwayat" component={RiwayatScreen} />
     </Stack.Navigator>
   );

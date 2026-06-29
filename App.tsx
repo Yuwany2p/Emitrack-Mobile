@@ -26,14 +26,18 @@ function RootNavigator() {
   return <AppNavigator />;
 }
 
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+
 export default function App() {
   return (
-    <AuthProvider>
-      <NavigationContainer>
-        <StatusBar style="dark" />
-        <RootNavigator />
-        <ToastContainer />
-      </NavigationContainer>
-    </AuthProvider>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <NavigationContainer>
+          <StatusBar style="dark" />
+          <RootNavigator />
+          <ToastContainer />
+        </NavigationContainer>
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }
