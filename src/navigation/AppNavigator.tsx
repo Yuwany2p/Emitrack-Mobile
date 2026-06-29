@@ -26,6 +26,7 @@ const INDICATOR_MARGIN = (TAB_WIDTH - INDICATOR_WIDTH) / 2;
 function CustomTabBar({ state, descriptors, navigation, position }: any) {
   const [isDragging, setIsDragging] = useState(false);
   const dragX = useRef(new Animated.Value(0)).current;
+  const lastDragX = useRef(0); // Lacak posisi terakhir gelembung secara akurat
 
   // PanResponder khusus untuk mendeteksi swipe/slide jari di atas Tab Bar
   const panResponder = useRef(
@@ -37,12 +38,18 @@ function CustomTabBar({ state, descriptors, navigation, position }: any) {
       onPanResponderGrant: (evt) => {
         setIsDragging(true);
         // Posisikan gelembung tepat di bawah jari saat mulai menggeser
-        const x = evt.nativeEvent.pageX - TAB_BAR_MARGIN_LEFT - INDICATOR_MARGIN - (INDICATOR_WIDTH / 2);
-        dragX.setValue(x);
-      },
-      onPanResponderMove: (evt) => {
-        // Gelembung mengikuti pergerakan jari secara realtime
         let x = evt.nativeEvent.pageX - TAB_BAR_MARGIN_LEFT - INDICATOR_MARGIN - (INDICATOR_WIDTH / 2);
+        
+        const maxTranslateX = TAB_BAR_WIDTH - INDICATOR_WIDTH - (INDICATOR_MARGIN * 2);
+        if (x < 0) x = 0;
+        if (x > maxTranslateX) x = maxTranslateX;
+
+        dragX.setValue(x);
+        lastDragX.current = x;
+      },
+      onPanResponderMove: (evt, gestureState) => {
+        // Gelembung mengikuti pergerakan jari secara realtime
+        let x = gestureState.moveX - TAB_BAR_MARGIN_LEFT - INDICATOR_MARGIN - (INDICATOR_WIDTH / 2);
         
         // Batasi agar gelembung tidak keluar dari area tab bar
         const maxTranslateX = TAB_BAR_WIDTH - INDICATOR_WIDTH - (INDICATOR_MARGIN * 2);
@@ -50,11 +57,13 @@ function CustomTabBar({ state, descriptors, navigation, position }: any) {
         if (x > maxTranslateX) x = maxTranslateX;
         
         dragX.setValue(x);
+        lastDragX.current = x;
       },
-      onPanResponderRelease: (evt) => {
+      onPanResponderRelease: (evt, gestureState) => {
         setIsDragging(false);
-        const x = evt.nativeEvent.pageX - TAB_BAR_MARGIN_LEFT;
-        let index = Math.floor(x / TAB_WIDTH);
+        
+        // Gunakan posisi terakhir gelembung (yang sangat akurat) daripada kordinat jari saat dilepas
+        let index = Math.round(lastDragX.current / TAB_WIDTH);
         
         // Pastikan index valid
         if (index < 0) index = 0;
@@ -164,6 +173,19 @@ function CustomTabBar({ state, descriptors, navigation, position }: any) {
           }
         };
 
+        const tabCenter = index * TAB_WIDTH;
+        const scale = isDragging
+          ? dragX.interpolate({
+              inputRange: [tabCenter - TAB_WIDTH, tabCenter, tabCenter + TAB_WIDTH],
+              outputRange: [1, 1.25, 1],
+              extrapolate: 'clamp',
+            })
+          : position.interpolate({
+              inputRange: [index - 1, index, index + 1],
+              outputRange: [1, 1.25, 1],
+              extrapolate: 'clamp',
+            });
+
         return (
           <TouchableOpacity
             key={route.key}
@@ -176,17 +198,19 @@ function CustomTabBar({ state, descriptors, navigation, position }: any) {
               height: '100%',
             }}
           >
-            <View style={{ alignItems: 'center', justifyContent: 'center', height: 32 }}>
-              <IconComponent color={isFocused ? '#1D9E75' : '#6B7280'} size={22} strokeWidth={isFocused ? 2.5 : 2} />
-            </View>
-            <Text style={{
-              fontSize: 10,
-              fontWeight: isFocused ? '700' : '500',
-              color: isFocused ? '#1F2937' : '#6B7280',
-              marginTop: 2,
-            }}>
-              {route.name}
-            </Text>
+            <Animated.View style={{ alignItems: 'center', justifyContent: 'center', transform: [{ scale }] }}>
+              <View style={{ alignItems: 'center', justifyContent: 'center', height: 32 }}>
+                <IconComponent color={isFocused ? '#1D9E75' : '#6B7280'} size={22} strokeWidth={isFocused ? 2.5 : 2} />
+              </View>
+              <Text style={{
+                fontSize: 10,
+                fontWeight: isFocused ? '700' : '500',
+                color: isFocused ? '#1F2937' : '#6B7280',
+                marginTop: 2,
+              }}>
+                {route.name}
+              </Text>
+            </Animated.View>
           </TouchableOpacity>
         );
       })}

@@ -51,9 +51,56 @@ export function validasiPerjalanan(
   jarakKmTarget: number,
   tujuanLatLng: { lat: number; lon: number } | null
 ): { valid: boolean; pesan: string; jarakAktual: number } {
-  // Sementara disable validasi jarak agar mudah testing
-  if (walkedArray.length === 0) {
-    return { valid: false, pesan: 'Tidak ada data GPS terekam.', jarakAktual: 0 };
+  if (walkedArray.length < 3) {
+    return { valid: false, pesan: 'Perjalanan terlalu singkat atau GPS tidak merekam.', jarakAktual: 0 };
   }
-  return { valid: true, pesan: 'Perjalanan valid.', jarakAktual: jarakKmTarget };
+
+  // Hitung akumulasi pergerakan user
+  const pathObj = walkedArray.map(p => ({ latitude: p[0], longitude: p[1] }));
+  const jarakAktual = hitungJarakKumulatif(pathObj);
+
+  if (jarakAktual < 0.1) {
+    return { valid: false, pesan: 'Anda belum bergerak cukup jauh (min. 100m).', jarakAktual: jarakAktual };
+  }
+
+  // Validasi radius tujuan
+  if (tujuanLatLng) {
+    const lastPos = walkedArray[walkedArray.length - 1];
+    const jarakKeTujuan = haversineKm(
+      lastPos[0], lastPos[1],
+      tujuanLatLng.lat, tujuanLatLng.lon
+    );
+
+    if (jarakKeTujuan > 1.0) { // Toleransi 1 km
+      return { valid: false, pesan: `Anda belum sampai di tujuan (jarak tersisa: ${(jarakKeTujuan).toFixed(1)} km).`, jarakAktual: jarakAktual };
+    }
+  }
+
+  return { valid: true, pesan: 'Perjalanan valid.', jarakAktual: jarakAktual };
+}
+
+// Deteksi Keluar Jalur (Off-Route)
+export function isOffRoute(
+  currentLoc: { latitude: number; longitude: number },
+  routeCoords: { latitude: number; longitude: number }[],
+  thresholdKm: number = 0.05 // 50 meter default
+): boolean {
+  if (!routeCoords || routeCoords.length === 0) return false;
+  
+  let minDistance = Infinity;
+  for (let i = 0; i < routeCoords.length; i++) {
+    const d = haversineKm(
+      currentLoc.latitude, currentLoc.longitude,
+      routeCoords[i].latitude, routeCoords[i].longitude
+    );
+    if (d < minDistance) {
+      minDistance = d;
+    }
+    // Early exit jika menemukan satu titik yang cukup dekat
+    if (minDistance <= thresholdKm) {
+      return false;
+    }
+  }
+  
+  return minDistance > thresholdKm;
 }

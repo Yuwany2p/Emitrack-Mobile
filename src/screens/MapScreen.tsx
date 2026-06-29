@@ -2,10 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, Alert, ScrollView, ActivityIndicator, Dimensions, Animated, PanResponder } from 'react-native';
 import MapView, { Polyline, Marker } from 'react-native-maps';
 import * as Location from 'expo-location';
-import { Play, Square, MapPin, Navigation, Bike, Car, Train, Bus, Leaf } from 'lucide-react-native';
+import { Play, Square, MapPin, Navigation, Bike, Car, Train, Bus, Leaf, LocateFixed } from 'lucide-react-native';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
-import { hitungJarakKumulatif, validasiPerjalanan } from '../lib/gps';
+import { hitungJarakKumulatif, validasiPerjalanan, isOffRoute } from '../lib/gps';
 import { hitungEmisi, rekomendasiRute, Rekomendasi, RATA_RATA_NASIONAL } from '../lib/emisi';
 import { showToast } from '../components/Toast';
 import LocationInput, { NominatimResult } from '../components/LocationInput';
@@ -41,6 +41,9 @@ export default function MapScreen({ navigation }: any) {
   const [isPickingMap, setIsPickingMap] = useState<'asal' | 'tujuan' | null>(null);
   const [mapCenterRegion, setMapCenterRegion] = useState<{ latitude: number, longitude: number } | null>(null);
   const [isReverseGeocoding, setIsReverseGeocoding] = useState(false);
+  
+  // -- State Rerouting --
+  const lastRerouteTime = useRef<number>(0);
 
   // -- State Bottom Sheet Animasi --
   const SHEET_MAX_HEIGHT = windowHeight * 0.45;
@@ -323,15 +326,43 @@ export default function MapScreen({ navigation }: any) {
     watchSubscription.current = await Location.watchPositionAsync(
       {
         accuracy: Location.Accuracy.High,
-        timeInterval: 2000,
+        timeInterval: 5000,
         distanceInterval: 5,
       },
       (loc) => {
         setLocation(loc);
+        
+        // Update Camera Navigasi
+        mapRef.current?.animateCamera({ 
+          center: loc.coords, 
+          heading: loc.coords.heading || 0,
+          pitch: 45,
+          zoom: 18 
+        }, { duration: 1000 });
+
         setPath(prevPath => [...prevPath, { latitude: loc.coords.latitude, longitude: loc.coords.longitude }]);
       }
     );
   };
+
+  // 4.5 Auto-Reroute Effect: Cek jika keluar jalur saat navigasi aktif
+  useEffect(() => {
+    if (isNavigating && location && ruteOSRM && ruteOSRM.length > 0) {
+      const offRoute = isOffRoute(location.coords, ruteOSRM, 0.05); // 50m
+      const now = Date.now();
+      
+      if (offRoute && now - lastRerouteTime.current > 15000) {
+        lastRerouteTime.current = now;
+        showToast('Keluar jalur, mencari rute baru...', 'info');
+        
+        setAsal({
+          lat: location.coords.latitude.toString(),
+          lon: location.coords.longitude.toString(),
+          display_name: 'Lokasi Anda Saat Ini'
+        });
+      }
+    }
+  }, [location, isNavigating, ruteOSRM]);
 
   // 5. Batal / Akhiri Navigasi
   const stopNavigation = () => {
@@ -445,7 +476,7 @@ export default function MapScreen({ navigation }: any) {
           longitudeDelta: 0.05,
         } : undefined}
       >
-        {!isNavigating && ruteOSRM && ruteOSRM.length > 0 && (
+        {ruteOSRM && ruteOSRM.length > 0 && (
           <Polyline coordinates={ruteOSRM} strokeColor="#3b82f6" strokeWidth={5} />
         )}
 
@@ -460,6 +491,34 @@ export default function MapScreen({ navigation }: any) {
           <Marker coordinate={{ latitude: tujuanLatLng[0], longitude: tujuanLatLng[1] }} pinColor="#EF4444" title="Tujuan" />
         )}
       </MapView>
+
+      {/* 1.5 TOMBOL RE-CENTER LOCATION */}
+      {!isPickingMap && (
+        <TouchableOpacity 
+          style={[styles.recenterButton, isNavigating ? { bottom: 220 } : { top: 180 }]} 
+          onPress={() => {
+            if (location) {
+              if (isNavigating) {
+                mapRef.current?.animateCamera({ 
+                  center: location.coords, 
+                  heading: location.coords.heading || 0,
+                  pitch: 45,
+                  zoom: 18 
+                }, { duration: 1000 });
+              } else {
+                mapRef.current?.animateToRegion({
+                  latitude: location.coords.latitude,
+                  longitude: location.coords.longitude,
+                  latitudeDelta: 0.01,
+                  longitudeDelta: 0.01,
+                }, 1000);
+              }
+            }
+          }}
+        >
+          <LocateFixed size={24} color="#1D9E75" />
+        </TouchableOpacity>
+      )}
 
       {/* 2. PANEL PENCARIAN (Floating di Atas) */}
       {!isNavigating && !isPickingMap && (
@@ -1064,5 +1123,18 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 14,
     fontWeight: 'bold',
+  },
+  recenterButton: {
+    position: 'absolute',
+    right: 16,
+    backgroundColor: 'white',
+    padding: 12,
+    borderRadius: 30,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    zIndex: 10,
   },
 });
