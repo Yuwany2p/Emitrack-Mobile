@@ -16,9 +16,39 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { height: windowHeight } = Dimensions.get('window');
 
-export default function MapScreen({ navigation }: any) {
-  const insets = useSafeAreaInsets();
+// Helper to simulate time since we only fetch Google Maps API once (for cars)
+const getEstimatedDuration = (moda: string, jarak: number, baseDurasi: number) => {
+  if (!baseDurasi) return 0;
+  if (moda.includes('Mobil')) return baseDurasi;
+  if (moda.includes('Motor')) return Math.round(baseDurasi * 0.75);
+  if (moda.includes('Sepeda')) return Math.round((jarak / 15) * 60); 
+  if (moda.includes('KRL') || moda.includes('MRT')) return Math.round((jarak / 40) * 60);
+  if (moda.includes('Bus') || moda.includes('TransJakarta')) return Math.round(baseDurasi * 1.2);
+  return baseDurasi;
+};
+
+const formatDuration = (totalMinutes: number) => {
+  if (totalMinutes < 60) return `${totalMinutes} mnt`;
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return m === 0 ? `${h} j` : `${h} j ${m} m`;
+};
+
+const getMinIcon = (moda: string) => {
+  if (moda.includes('Mobil')) return <Car size={14} color="#4B5563" />;
+  if (moda.includes('Motor')) return <Bike size={14} color="#4B5563" />;
+  if (moda.includes('Bus') || moda.includes('TransJakarta')) return <Bus size={14} color="#4B5563" />;
+  if (moda.includes('Sepeda')) return <Bike size={14} color="#4B5563" />;
+  return <Train size={14} color="#4B5563" />;
+};
+
+export default function MapScreen({ navigation, route }: any) {
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
+  
+  // -- State Caching Rute --
+  const [routeCache, setRouteCache] = useState<Record<string, { coords: any[], jarakKm: number, durasiMenit: number }>>({});
+  const lastCoordsRef = useRef<string>('');
 
   // -- State Peta & GPS Default --
   const mapRef = useRef<MapView>(null);
@@ -26,6 +56,8 @@ export default function MapScreen({ navigation }: any) {
   const [showTripShareModal, setShowTripShareModal] = useState(false);
   const [savedTripData, setSavedTripData] = useState<any>(null);
   const [mapSnapshotUri, setMapSnapshotUri] = useState<string | null>(null);
+  const [isSharing, setIsSharing] = useState(false);
+  const isSharingRef = useRef(false);
   const watchSubscription = useRef<Location.LocationSubscription | null>(null);
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
 
@@ -157,17 +189,45 @@ export default function MapScreen({ navigation }: any) {
     });
   }, [navigation, isPickingMap, isNavigating]);
 
+  // Handle Return From Kalkulator (Share Modal Trigger)
+  useEffect(() => {
+    if (route.params?.triggerShare && route.params?.savedTripData) {
+      setSavedTripData(route.params.savedTripData);
+      setShowTripShareModal(true);
+      
+      // Zoom to fit the actual traveled path (or planned route if testing) for the share image
+      if (path.length > 1) {
+        mapRef.current?.fitToCoordinates(path, {
+          edgePadding: { top: 250, right: 80, bottom: 350, left: 80 },
+          animated: true,
+        });
+      } else if (ruteOSRM && ruteOSRM.length > 0) {
+        mapRef.current?.fitToCoordinates(ruteOSRM, {
+          edgePadding: { top: 250, right: 80, bottom: 350, left: 80 },
+          animated: true,
+        });
+      }
+
+      // Clear params to avoid loop
+      navigation.setParams({ triggerShare: undefined, savedTripData: undefined });
+    }
+  }, [route.params?.triggerShare, route.params?.savedTripData]);
+
   useEffect(() => {
     if (asal && tujuan) {
-      // Note: We use a separate state to track if we need to auto-select the greenest
-      fetchGoogleRoute(asal, tujuan, activeModa);
+      const currentCoords = `${asal.lat}_${asal.lon}_${tujuan.lat}_${tujuan.lon}`;
+      const isNewSearch = currentCoords !== lastCoordsRef.current;
+      lastCoordsRef.current = currentCoords;
+
+      fetchGoogleRoute(asal, tujuan, activeModa, isNewSearch);
     } else {
       setRuteOSRM(null);
       setJarakKm(0);
       setDurasiMenit(0);
       setSelectedModa(null);
+      lastCoordsRef.current = '';
     }
-  }, [asal, tujuan]); // Removed activeModa to prevent refetching when user just changes the tab
+  }, [asal, tujuan, activeModa]);
 
   const GOOGLE_MAPS_API_KEY = 'AIzaSyARVvY83wAu_H6ezvB-WmhOHsaN63hHmMk';
 
@@ -185,7 +245,7 @@ export default function MapScreen({ navigation }: any) {
     return d;
   };
 
-  const fetchGoogleRoute = async (start: NominatimResult, end: NominatimResult, mode: string) => {
+  const fetchGoogleRoute = async (start: NominatimResult, end: NominatimResult, mode: string, isNewSearch: boolean = false) => {
     setIsFetchingRoute(true);
     try {
       let travelMode = 'DRIVE';
@@ -196,9 +256,34 @@ export default function MapScreen({ navigation }: any) {
       } else if (mode.includes('Sepeda')) {
         travelMode = 'WALK';
         routingPref = undefined;
-      } else if (mode.includes('KRL') || mode.includes('TransJakarta') || mode.includes('LRT') || mode.includes('MRT')) {
+      } else if (mode.includes('KRL') || mode.includes('TransJakarta') || mode.includes('LRT') || mode.includes('MRT') || mode.includes('Bus')) {
         travelMode = 'TRANSIT';
         routingPref = undefined;
+      }
+
+      const cacheKey = `${start.lat}_${start.lon}_${end.lat}_${end.lon}_${travelMode}`;
+
+      // Panggil fungsi rekomendasi (hanya jika pencarian rute baru)
+      const generateRecommendations = (distKm: number) => {
+        const newEmisiMobil = hitungEmisi('mobil', 'ron92', distKm);
+        const newRecs = rekomendasiRute(newEmisiMobil, distKm, Number(start.lat), Number(start.lon), Number(end.lat), Number(end.lon));
+        if (newRecs && newRecs.length > 0) {
+          const greenest = newRecs.reduce((prev, curr) => (prev.emisi < curr.emisi ? prev : curr));
+          setSelectedModa(greenest.moda);
+          setActiveModa(greenest.moda);
+        }
+      };
+
+      if (routeCache[cacheKey]) {
+        const cached = routeCache[cacheKey];
+        setRuteOSRM(cached.coords);
+        setJarakKm(cached.jarakKm);
+        setDurasiMenit(cached.durasiMenit);
+        setIsFetchingRoute(false);
+        if (isNewSearch) {
+          generateRecommendations(cached.jarakKm);
+        }
+        return;
       }
 
       const requestBody: any = {
@@ -237,18 +322,17 @@ export default function MapScreen({ navigation }: any) {
         // Decode polyline string dari Google Routes API
         const coords = decodePolyline(route.polyline.encodedPolyline);
 
-        setRuteOSRM(coords);
-        setJarakKm(Number((route.distanceMeters / 1000).toFixed(1)));
-
-        // duration bernilai string e.g., "217s"
+        const jarakKmVal = Number((route.distanceMeters / 1000).toFixed(1));
         const durationSecs = parseInt(route.duration.replace('s', ''));
-        setDurasiMenit(Math.round(durationSecs / 60));
+        const durasiMenitVal = Math.round(durationSecs / 60);
 
-        // Auto-select the greenest mode when a new route is loaded
-        const newEmisiMobil = hitungEmisi('mobil', 'ron92', Number((route.distanceMeters / 1000).toFixed(1)));
-        const newRecs = rekomendasiRute(newEmisiMobil, Number((route.distanceMeters / 1000).toFixed(1)), Number(start.lat), Number(start.lon), Number(end.lat), Number(end.lon));
-        if (newRecs && newRecs.length > 0) {
-          setActiveModa(newRecs[0].moda);
+        setRouteCache(prev => ({ ...prev, [cacheKey]: { coords, jarakKm: jarakKmVal, durasiMenit: durasiMenitVal } }));
+        setRuteOSRM(coords);
+        setJarakKm(jarakKmVal);
+        setDurasiMenit(durasiMenitVal);
+
+        if (isNewSearch) {
+          generateRecommendations(jarakKmVal);
         }
 
         // Paskan kamera peta ke rute (hanya jika tidak sedang navigasi aktif)
@@ -265,7 +349,7 @@ export default function MapScreen({ navigation }: any) {
       }
     } catch (err) {
       console.error('Google Maps fetch error:', err);
-      showToast('Gagal mengambil rute Google Maps', 'warning');
+      showToast('Gagal mengambil rute Google Maps', 'warning', 3000, 'top');
     } finally {
       setIsFetchingRoute(false);
     }
@@ -406,107 +490,56 @@ export default function MapScreen({ navigation }: any) {
     }
   };
 
-  // 6. Selesai & Simpan Trip
+  // 6. Selesai & Simpan Trip (Redirect ke Kalkulator)
   const saveTrip = async () => {
     const tujuanLatLng = tujuan ? { lat: Number(tujuan.lat), lon: Number(tujuan.lon) } : null;
     if (!user || !selectedModa || !tujuanLatLng) return;
-    setIsSaving(true);
 
-    // Validasi jarak dsb menggunakan logic GPS
+    // Hitung jarak tempuh aktual dari GPS path
     const walkedArray: [number, number][] = path.map(p => [p.latitude, p.longitude]);
     const hasil = validasiPerjalanan(walkedArray, jarakKm, tujuanLatLng);
-
-    // BYPASS UNTUK TESTING (Sesuai permintaan)
-    // if (!hasil.valid) {
-    //   showToast(hasil.pesan, 'warning');
-    //   setIsSaving(false);
-    //   return;
-    // }
-
-    // Agar saat ditest langsung menyimpan seolah-olah jalan 100%
-    hasil.jarakAktual = jarakKm;
+    
+    // Gunakan murni jarak aktual yang dilalui dari GPS path
+    let jarakAktual = jarakDitempuh > 0 ? jarakDitempuh : 0;
 
     const rec = rekomendasi.find(r => r.moda === selectedModa);
-    if (!rec) {
-      setIsSaving(false); return;
+    if (!rec) return;
+
+    // Convert mode name to Calculator format
+    const dbJenis = selectedModa.toLowerCase().includes('mobil') ? 'mobil'
+      : selectedModa.toLowerCase().includes('motor') ? 'motor'
+      : selectedModa.toLowerCase().includes('sepeda') ? 'sepeda'
+      : selectedModa.toLowerCase().includes('krl') ? 'krl'
+      : 'transjakarta';
+
+    // Berhenti navigasi (tapi jangan reset 'path' supaya bisa dipakai screenshot)
+    setIsNavigating(false);
+    if (watchSubscription.current) {
+      watchSubscription.current.remove();
+      watchSubscription.current = null;
     }
-
-    const isPrivate = selectedModa.includes('Pribadi');
-    const isSepeda = selectedModa.toLowerCase().includes('sepeda');
-    const dbJenis = isPrivate
-      ? (selectedModa.toLowerCase().includes('motor') ? 'motor' : 'mobil')
-      : isSepeda ? 'sepeda' : 'transportasi_umum';
-
-    const dbBbm = isPrivate
-      ? 'ron92'
-      : isSepeda ? 'sepeda'
-        : selectedModa.toLowerCase().includes('krl') ? 'krl' : 'transjakarta';
-
-    const emisiDihemat = isPrivate ? 0 : Math.max(0, rec.hemat);
-
-    const { error } = await supabase.from('trips').insert({
-      user_id: user.id,
-      jenis: dbJenis,
-      bbm: dbBbm,
-      jarak_km: Number(hasil.jarakAktual.toFixed(2)),
-      emisi_kg: rec.emisi,
-      emisi_dihemat: Number(emisiDihemat.toFixed(3)),
-      poin_didapat: rec.poin,
-    });
-
-    if (error) {
-      showToast('Gagal menyimpan: ' + error.message, 'warning');
-      setIsSaving(false);
-      return;
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
     }
+    // Note: We deliberately don't setPath([]) here so the share screen can show it!
 
-    // Update Profile
-    const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-    if (profile) {
-      await supabase.from('profiles').update({
-        total_poin: (profile.total_poin || 0) + rec.poin,
-        total_hemat: Number(((profile.total_hemat || 0) + emisiDihemat).toFixed(2)),
-      }).eq('id', user.id);
-    }
-
-    showToast(`Perjalanan Hijau Disimpan! +${rec.poin} Poin`, 'success', 3000, 'top');
-    setIsSaving(false);
-
-    // Zoom to fit the route for the screenshot
-    if (ruteOSRM) {
-      mapRef.current?.fitToCoordinates(ruteOSRM, {
-        edgePadding: { top: 250, right: 80, bottom: 280, left: 80 },
-        animated: true,
-      });
-    }
-
-    setSavedTripData({
-      jarak: hasil.jarakAktual,
-      emisiHemat: emisiDihemat,
-      poin: rec.poin,
-      jenis: dbJenis,
-      bbm: dbBbm,
-      modaLengkap: selectedModa,
-      date: new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
-    });
-
-    // Wait for zoom animation to finish before taking snapshot
-    setTimeout(async () => {
-      try {
-        if (mapRef.current) {
-          const uri = await mapRef.current.takeSnapshot({
-            format: 'png',
-            quality: 0.9,
-            result: 'file'
-          });
-          setMapSnapshotUri(uri);
+    navigation.navigate('Dashboard', { 
+      screen: 'Kalkulator', 
+      params: { 
+        autoFill: true, 
+        autoModa: dbJenis, 
+        autoJarak: jarakAktual.toFixed(2),
+        // Pass complete data to reconstruct the share poster later
+        tripContext: {
+          waktuMenit: Math.floor(navWaktu / 60),
+          poinBase: rec.poin,
+          emisiBase: rec.emisi,
+          hematBase: rec.hemat,
+          date: new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
         }
-      } catch (err) {
-        console.log('Error map snapshot', err);
-      }
-      stopNavigation();
-      setShowTripShareModal(true);
-    }, 1500);
+      } 
+    });
   };
 
   const jarakDitempuh = hitungJarakKumulatif(path);
@@ -534,12 +567,12 @@ export default function MapScreen({ navigation }: any) {
     <View style={styles.container}>
       {/* 1. PETA FULLSCREEN (Background) wrapped in ViewShot */}
       <ViewShot ref={mapShotRef} style={{ flex: 1, ...StyleSheet.absoluteFillObject }} options={{ format: 'png', quality: 1 }}>
-
-        {showTripShareModal && mapSnapshotUri ? (
-          <Image source={{ uri: mapSnapshotUri }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
-        ) : (
-          <MapView
-            ref={mapRef}
+        <View collapsable={false} style={{ flex: 1, ...StyleSheet.absoluteFillObject }}>
+          {showTripShareModal && mapSnapshotUri ? (
+            <Image source={{ uri: mapSnapshotUri }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+          ) : (
+            <MapView
+              ref={mapRef}
             style={StyleSheet.absoluteFillObject}
             showsUserLocation={!showTripShareModal}
             showsMyLocationButton={false}
@@ -554,9 +587,12 @@ export default function MapScreen({ navigation }: any) {
               longitudeDelta: 0.05,
             } : undefined}
           >
-            {!isNavigating && ruteOSRM && ruteOSRM.length > 0 && (
+            {/* Draw original route only when NOT sharing. When sharing, show path instead */}
+            {!isNavigating && !showTripShareModal && ruteOSRM && ruteOSRM.length > 0 && (
               <Polyline coordinates={ruteOSRM} strokeColor="#3b82f6" strokeWidth={5} />
             )}
+
+
 
             {isNavigating && rutePassed.length > 0 && (
               <Polyline coordinates={rutePassed} strokeColor="#9CA3AF" strokeWidth={5} />
@@ -566,13 +602,8 @@ export default function MapScreen({ navigation }: any) {
               <Polyline coordinates={ruteRemaining} strokeColor="#3b82f6" strokeWidth={5} />
             )}
 
-            {isNavigating && path.length > 0 && (
+            {(isNavigating || showTripShareModal) && path.length > 0 && (
               <Polyline coordinates={path} strokeColor="#1D9E75" strokeWidth={5} />
-            )}
-
-            {/* Draw original route when sharing */}
-            {showTripShareModal && ruteOSRM && ruteOSRM.length > 0 && (
-              <Polyline coordinates={ruteOSRM} strokeColor="#3b82f6" strokeWidth={5} />
             )}
 
             {!isNavigating && asalLatLng && !showTripShareModal && (
@@ -582,7 +613,7 @@ export default function MapScreen({ navigation }: any) {
               <Marker coordinate={{ latitude: tujuanLatLng[0], longitude: tujuanLatLng[1] }} pinColor="#EF4444" title="Tujuan" />
             )}
           </MapView>
-        )}
+          )}
 
         {/* STRATA-LIKE OVERLAY (Hanya tampil saat mau di-share agar ikut terfoto) */}
         {showTripShareModal && savedTripData && (
@@ -621,6 +652,7 @@ export default function MapScreen({ navigation }: any) {
             </LinearGradient>
           </View>
         )}
+        </View>
       </ViewShot>
 
       {/* Floating UI Elements (Hidden when sharing) */}
@@ -714,7 +746,11 @@ export default function MapScreen({ navigation }: any) {
               <TouchableOpacity activeOpacity={0.8} onPress={() => setIsSheetExpanded(!isSheetExpanded)} style={styles.sheetHeaderArea}>
                 <View style={styles.sheetHandle} />
                 <Text style={styles.sheetTitle}>Rekomendasi Rute Hijau</Text>
-                {isSheetExpanded && <Text style={styles.sheetSubtitle}>Jarak est: {jarakKm} km • {durasiMenit} mnt (mobil)</Text>}
+                {isSheetExpanded && (
+                  <Text style={styles.sheetSubtitle}>
+                    Jarak est: {jarakKm} km • {formatDuration(getEstimatedDuration(activeModa, jarakKm, durasiMenit))} ({activeModa})
+                  </Text>
+                )}
               </TouchableOpacity>
 
               {isSheetExpanded ? (
@@ -764,15 +800,15 @@ export default function MapScreen({ navigation }: any) {
                   <View style={{ height: 20 }} />
                 </ScrollView>
               ) : (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingHorizontal: 16, marginTop: 8 }} contentContainerStyle={{ gap: 12 }}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingHorizontal: 16 }} style={{ marginTop: 8 }}>
                   {rekomendasi.map((rec, i) => (
                     <TouchableOpacity
                       key={i}
                       style={{ backgroundColor: '#F3F4F6', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: activeModa === rec.moda ? '#1D9E75' : '#E5E7EB' }}
                       onPress={() => { setActiveModa(rec.moda); setIsSheetExpanded(true); }}
                     >
-                      {rec.moda.includes('Mobil') ? <Car size={14} color="#4B5563" /> : rec.moda.includes('Motor') ? <Bike size={14} color="#4B5563" /> : <Train size={14} color="#4B5563" />}
-                      <Text style={{ fontSize: 12, fontWeight: '600', color: '#4B5563' }}>{rec.moda.includes('Mobil') ? durasiMenit : Math.round(durasiMenit * 0.9)} mnt</Text>
+                      {getMinIcon(rec.moda)}
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: '#4B5563' }}>{formatDuration(getEstimatedDuration(rec.moda, jarakKm, durasiMenit))}</Text>
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
@@ -871,13 +907,17 @@ export default function MapScreen({ navigation }: any) {
                     <Text style={styles.navHint}>Tempuh minimal 50% rute untuk menyelesaikan</Text>
                   )}
                   <View style={styles.navActionRow}>
-                    <TouchableOpacity style={styles.btnBatal} onPress={stopNavigation} disabled={isSaving}>
+                    <TouchableOpacity style={styles.btnBatal} onPress={stopNavigation}>
                       <Square size={16} color="#EF4444" fill="#EF4444" />
                       <Text style={styles.btnBatalText}>Batal</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.btnSelesai} onPress={saveTrip} disabled={isSaving}>
-                      {isSaving ? <ActivityIndicator color="white" /> : <Navigation size={16} color="white" />}
-                      <Text style={styles.btnSelesaiText}>{isSaving ? 'Menyimpan...' : 'Selesai & Simpan'}</Text>
+                    <TouchableOpacity 
+                      style={[styles.btnSelesai, persenProgress < 50 && { backgroundColor: '#9CA3AF' }]} 
+                      onPress={saveTrip} 
+                      disabled={persenProgress < 50}
+                    >
+                      <Navigation size={16} color="white" />
+                      <Text style={styles.btnSelesaiText}>Selesai & Simpan</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -895,20 +935,57 @@ export default function MapScreen({ navigation }: any) {
           <Text style={{ fontSize: 13, color: '#6B7280', textAlign: 'center', marginBottom: 24 }}>Pamerkan rute hijaumu ke teman-teman dan jadilah inspirasi bagi mereka.</Text>
 
           <TouchableOpacity
-            style={[styles.btnSelesai, { marginBottom: 12, height: 56, borderRadius: 28, elevation: 4, shadowColor: '#10B981', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 }]}
+            style={[styles.btnSelesai, { marginBottom: 12, height: 56, borderRadius: 28, elevation: 4, shadowColor: '#10B981', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 }, isSharing && { opacity: 0.7 }]}
+            disabled={isSharing}
             onPress={async () => {
-              if (mapShotRef.current) {
+              if (isSharingRef.current) return;
+              isSharingRef.current = true;
+              setIsSharing(true);
+              
+              if (mapRef.current && mapShotRef.current) {
                 try {
-                  const uri = await mapShotRef.current.capture();
-                  await Sharing.shareAsync(uri);
+                  // 1. Snapshot the MapView alone (resolves Android GL Surface capture issue)
+                  const mapUri = await mapRef.current.takeSnapshot({
+                    format: 'png',
+                    quality: 1,
+                    result: 'file'
+                  });
+                  
+                  // 2. Temporarily replace MapView with a flat Image
+                  setMapSnapshotUri(mapUri);
+                  
+                  // 3. Wait for the Image to render on screen
+                  await new Promise(resolve => setTimeout(resolve, 500));
+                  
+                  // 4. Capture the entire ViewShot (Image + Poster)
+                  const finalUri = await mapShotRef.current.capture();
+                  
+                  // 5. Restore the interactive MapView immediately
+                  setMapSnapshotUri(null);
+                  
+                  // 6. Share the final composite image
+                  await Sharing.shareAsync(finalUri);
                 } catch (e) {
                   console.log(e);
+                  setMapSnapshotUri(null);
+                } finally {
+                  isSharingRef.current = false;
+                  setIsSharing(false);
                 }
+              } else {
+                isSharingRef.current = false;
+                setIsSharing(false);
               }
             }}
           >
-            <ShareIcon color="white" size={20} />
-            <Text style={[styles.btnSelesaiText, { fontSize: 16 }]}>Bagikan Gambar Rute</Text>
+            {isSharing ? (
+              <ActivityIndicator color="white" size="small" />
+            ) : (
+              <ShareIcon color="white" size={20} />
+            )}
+            <Text style={[styles.btnSelesaiText, { fontSize: 16 }]}>
+              {isSharing ? 'Memproses...' : 'Bagikan Gambar Rute'}
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -916,7 +993,7 @@ export default function MapScreen({ navigation }: any) {
             onPress={() => {
               setShowTripShareModal(false);
               stopNavigation();
-              navigation.navigate('Dashboard');
+              navigation.navigate('Dashboard', { screen: 'DashboardHome' });
             }}
           >
             <Text style={[styles.btnBatalText, { color: '#4B5563', fontSize: 15 }]}>Tutup & Kembali ke Beranda</Text>

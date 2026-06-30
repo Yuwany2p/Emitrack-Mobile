@@ -29,7 +29,7 @@ const HARGA_BBM_DEFAULT: Record<string, number> = {
   listrik: 2500,
 };
 
-export default function KalkulatorScreen({ navigation }: any) {
+export default function KalkulatorScreen({ navigation, route }: any) {
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<'hitung' | 'proyeksi'>('hitung');
@@ -40,6 +40,21 @@ export default function KalkulatorScreen({ navigation }: any) {
   const [hariPerMinggu, setHariPerMinggu] = useState('');
   const [showResultHitung, setShowResultHitung] = useState(false);
   const [showResultProyeksi, setShowResultProyeksi] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const autoFill = route?.params?.autoFill;
+  const autoModa = route?.params?.autoModa;
+  const autoJarak = route?.params?.autoJarak;
+  const tripContext = route?.params?.tripContext;
+
+  React.useEffect(() => {
+    if (autoFill && autoModa && autoJarak) {
+      setJenis(autoModa);
+      setJarakText(String(autoJarak));
+      setActiveTab('hitung');
+      setShowResultHitung(true);
+    }
+  }, [autoFill, autoModa, autoJarak]);
 
   // Animated Header Setup
   const HEADER_HEIGHT = 90;
@@ -77,7 +92,63 @@ export default function KalkulatorScreen({ navigation }: any) {
   const airLiter = Math.round(emisiTahunProyeksi / 0.5);
   const jamTerbang = Number((emisiTahunProyeksi / 90).toFixed(1));
 
+  const saveAutoTrip = async () => {
+    if (!user || !jenis) return;
+    if (selectedModa?.isPrivate && !bbm) {
+      showToast('Mohon pilih bahan bakar kendaraan Anda', 'warning');
+      return;
+    }
+    
+    setIsSaving(true);
+    const dbBbm = selectedModa?.isPrivate ? bbm : (jenis === 'sepeda' ? 'sepeda' : (jenis === 'krl' ? 'krl' : 'transjakarta'));
+    
+    // Recalculate emission if private vehicle to account for the chosen BBM, else use base
+    const finalEmisi = selectedModa?.isPrivate ? Number(emisiHarian.toFixed(3)) : tripContext?.emisiBase;
+    const finalHemat = tripContext?.hematBase || 0;
+    const finalPoin = tripContext?.poinBase || 0;
+    
+    const { error } = await supabase.from('trips').insert({
+      user_id: user.id,
+      jenis: jenis,
+      bbm: dbBbm,
+      jarak_km: Number(autoJarak),
+      emisi_kg: finalEmisi,
+      emisi_dihemat: finalHemat,
+      poin_didapat: finalPoin,
+    });
 
+    if (error) {
+      showToast('Gagal menyimpan: ' + error.message, 'warning');
+      setIsSaving(false);
+      return;
+    }
+
+    // Update Profile
+    const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+    if (profile) {
+      await supabase.from('profiles').update({
+        total_poin: (profile.total_poin || 0) + finalPoin,
+        total_hemat: Number(((profile.total_hemat || 0) + finalHemat).toFixed(2)),
+      }).eq('id', user.id);
+    }
+
+    showToast(`Perjalanan Hijau Disimpan! +${finalPoin} Poin`, 'success', 3000, 'top');
+    setIsSaving(false);
+
+    // Redirect back to Map with triggerShare
+    navigation.navigate('Peta', {
+      triggerShare: true,
+      savedTripData: {
+        jarak: Number(autoJarak),
+        emisiHemat: finalHemat,
+        poin: finalPoin,
+        jenis: jenis,
+        bbm: dbBbm,
+        modaLengkap: selectedModa?.label,
+        date: tripContext?.date || new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
+      }
+    });
+  };
 
   return (
     <View style={styles.container}>
@@ -115,23 +186,23 @@ export default function KalkulatorScreen({ navigation }: any) {
       >
 
         <View style={[styles.tabContainer]}>
-          <TouchableOpacity style={[styles.tabBtn, activeTab === 'hitung' && styles.tabBtnActive]} onPress={() => setActiveTab('hitung')}>
+          <TouchableOpacity style={[styles.tabBtn, activeTab === 'hitung' && styles.tabBtnActive]} onPress={() => setActiveTab('hitung')} disabled={autoFill}>
             <Calculator color={activeTab === 'hitung' ? '#1D9E75' : '#6B7280'} size={16} />
             <Text style={[styles.tabText, activeTab === 'hitung' && styles.tabTextActive]}>Emisi Harian</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.tabBtn, activeTab === 'proyeksi' && styles.tabBtnActive]} onPress={() => setActiveTab('proyeksi')}>
+          <TouchableOpacity style={[styles.tabBtn, activeTab === 'proyeksi' && styles.tabBtnActive]} onPress={() => setActiveTab('proyeksi')} disabled={autoFill}>
             <BarChart2 color={activeTab === 'proyeksi' ? '#1D9E75' : '#6B7280'} size={16} />
             <Text style={[styles.tabText, activeTab === 'proyeksi' && styles.tabTextActive]}>Emisi Tahunan</Text>
           </TouchableOpacity>
         </View>
 
-        <View style={[styles.card]}>
-          <Text style={styles.cardTitle}>Moda Transportasi</Text>
+        <View style={[styles.card, autoFill && { opacity: 0.7 }]}>
+          <Text style={styles.cardTitle}>Moda Transportasi {autoFill && '(Otomatis)'}</Text>
           <View style={styles.modaGrid}>
             {TRANSPORTASI.map(t => {
               const Icon = t.icon;
               return (
-                <TouchableOpacity key={t.value} style={[styles.modaBtn, jenis === t.value && styles.modaBtnActive]} onPress={() => { setJenis(t.value); setBbm(''); }}>
+                <TouchableOpacity key={t.value} style={[styles.modaBtn, jenis === t.value && styles.modaBtnActive]} onPress={() => { setJenis(t.value); setBbm(''); }} disabled={autoFill}>
                   <Icon color={jenis === t.value ? 'white' : '#6B7280'} size={16} />
                   <Text style={[styles.modaText, jenis === t.value && styles.modaTextActive]}>{t.label}</Text>
                 </TouchableOpacity>
@@ -155,9 +226,9 @@ export default function KalkulatorScreen({ navigation }: any) {
 
         {activeTab === 'hitung' ? (
           <>
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Jarak Tempuh Harian (km)</Text>
-              <TextInput value={jarakText} onChangeText={setJarakText} keyboardType="numeric" style={styles.input} />
+            <View style={[styles.card, autoFill && { opacity: 0.7 }]}>
+              <Text style={styles.cardTitle}>Jarak Tempuh {autoFill ? 'Aktual' : 'Harian'} (km) {autoFill && '(Otomatis)'}</Text>
+              <TextInput value={jarakText} onChangeText={setJarakText} keyboardType="numeric" style={styles.input} editable={!autoFill} />
             </View>
             {showResultHitung && (
               <View style={styles.resultCard}>
@@ -216,37 +287,49 @@ export default function KalkulatorScreen({ navigation }: any) {
           </>
         )}
 
-        <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
-          <TouchableOpacity style={[styles.saveBtn, { flex: 1, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#D1D5DB', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1 }]} onPress={() => {
-            setJenis('');
-            setBbm('');
-            setJarakText('');
-            setJarakHarian('');
-            setHariPerMinggu('');
-            setShowResultHitung(false);
-            setShowResultProyeksi(false);
-          }}>
-            <Text style={{ color: '#4B5563', fontWeight: '600' }}>Reset</Text>
-          </TouchableOpacity>
+        {autoFill ? (
+          <View style={{ marginTop: 8 }}>
+            <TouchableOpacity 
+              style={[styles.saveBtn, { backgroundColor: '#1D9E75', borderWidth: 1, borderColor: '#047857', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1 }]} 
+              onPress={saveAutoTrip}
+              disabled={isSaving}
+            >
+              <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>{isSaving ? 'Menyimpan...' : 'Selesai & Simpan'}</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
+            <TouchableOpacity style={[styles.saveBtn, { flex: 1, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#D1D5DB', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1 }]} onPress={() => {
+              setJenis('');
+              setBbm('');
+              setJarakText('');
+              setJarakHarian('');
+              setHariPerMinggu('');
+              setShowResultHitung(false);
+              setShowResultProyeksi(false);
+            }}>
+              <Text style={{ color: '#4B5563', fontWeight: '600' }}>Reset</Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity style={[styles.saveBtn, { flex: 1, borderWidth: 1, borderColor: '#047857', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1 }]} onPress={() => {
-            if (activeTab === 'hitung') {
-              if (!jenis || (selectedModa?.isPrivate && !bbm) || !jarakText) {
-                showToast('Mohon lengkapi semua data', 'warning');
-                return;
+            <TouchableOpacity style={[styles.saveBtn, { flex: 1, borderWidth: 1, borderColor: '#047857', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1 }]} onPress={() => {
+              if (activeTab === 'hitung') {
+                if (!jenis || (selectedModa?.isPrivate && !bbm) || !jarakText) {
+                  showToast('Mohon lengkapi semua data', 'warning');
+                  return;
+                }
+                setShowResultHitung(true);
+              } else {
+                if (!jenis || (selectedModa?.isPrivate && !bbm) || !jarakHarian || !hariPerMinggu) {
+                  showToast('Mohon lengkapi semua data', 'warning');
+                  return;
+                }
+                setShowResultProyeksi(true);
               }
-              setShowResultHitung(true);
-            } else {
-              if (!jenis || (selectedModa?.isPrivate && !bbm) || !jarakHarian || !hariPerMinggu) {
-                showToast('Mohon lengkapi semua data', 'warning');
-                return;
-              }
-              setShowResultProyeksi(true);
-            }
-          }}>
-            <Text style={{ color: 'white', fontWeight: '600' }}>Hitung</Text>
-          </TouchableOpacity>
-        </View>
+            }}>
+              <Text style={{ color: 'white', fontWeight: '600' }}>Hitung</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </Animated.ScrollView>
 
       {/* Dynamic Status Bar Overlay with translateY for native driver support */}
