@@ -94,8 +94,8 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   logoImage: {
-    width: '85%',
-    height: 120,
+    width: '95%',
+    height: 160,
   },
   bottomSection: {
     flex: 1,

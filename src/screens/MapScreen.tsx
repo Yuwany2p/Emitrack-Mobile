@@ -50,7 +50,7 @@ export default function MapScreen({ navigation }: any) {
   const [isPickingMap, setIsPickingMap] = useState<'asal' | 'tujuan' | null>(null);
   const [mapCenterRegion, setMapCenterRegion] = useState<{ latitude: number, longitude: number } | null>(null);
   const [isReverseGeocoding, setIsReverseGeocoding] = useState(false);
-  
+
   // -- State Rerouting --
   const lastRerouteTime = useRef<number>(0);
 
@@ -83,7 +83,7 @@ export default function MapScreen({ navigation }: any) {
       onPanResponderRelease: (_, gestureState) => {
         translateY.flattenOffset();
         const currentY = lastGestureDy.current + gestureState.dy;
-        
+
         let targetY = SNAP_EXPANDED;
         if (gestureState.vy > 0.5 || currentY > SNAP_COLLAPSED / 2) {
           targetY = SNAP_COLLAPSED; // Swipe down to collapse
@@ -243,7 +243,7 @@ export default function MapScreen({ navigation }: any) {
         // duration bernilai string e.g., "217s"
         const durationSecs = parseInt(route.duration.replace('s', ''));
         setDurasiMenit(Math.round(durationSecs / 60));
-        
+
         // Auto-select the greenest mode when a new route is loaded
         const newEmisiMobil = hitungEmisi('mobil', 'ron92', Number((route.distanceMeters / 1000).toFixed(1)));
         const newRecs = rekomendasiRute(newEmisiMobil, Number((route.distanceMeters / 1000).toFixed(1)), Number(start.lat), Number(start.lon), Number(end.lat), Number(end.lon));
@@ -281,7 +281,7 @@ export default function MapScreen({ navigation }: any) {
     try {
       const res = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${GOOGLE_MAPS_API_KEY}`);
       const data = await res.json();
-      
+
       let addressName = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
       if (data.status === 'OK' && data.results && data.results.length > 0) {
         // Menggunakan alamat yang paling relevan (result pertama)
@@ -349,13 +349,13 @@ export default function MapScreen({ navigation }: any) {
       },
       (loc) => {
         setLocation(loc);
-        
+
         // Update Camera Navigasi
-        mapRef.current?.animateCamera({ 
-          center: loc.coords, 
+        mapRef.current?.animateCamera({
+          center: loc.coords,
           heading: loc.coords.heading || 0,
           pitch: 0,
-          zoom: 18 
+          zoom: 18
         }, { duration: 1000 });
 
         setPath(prevPath => [...prevPath, { latitude: loc.coords.latitude, longitude: loc.coords.longitude }]);
@@ -368,11 +368,11 @@ export default function MapScreen({ navigation }: any) {
     if (isNavigating && location && ruteOSRM && ruteOSRM.length > 0) {
       const offRoute = isOffRoute(location.coords, ruteOSRM, 0.05); // 50m
       const now = Date.now();
-      
+
       if (offRoute && now - lastRerouteTime.current > 15000) {
         lastRerouteTime.current = now;
         showToast('Keluar jalur, mencari rute baru...', 'info', 3000, 'top');
-        
+
         setAsal({
           lat: location.coords.latitude.toString(),
           lon: location.coords.longitude.toString(),
@@ -422,7 +422,7 @@ export default function MapScreen({ navigation }: any) {
     //   setIsSaving(false);
     //   return;
     // }
-    
+
     // Agar saat ditest langsung menyimpan seolah-olah jalan 100%
     hasil.jarakAktual = jarakKm;
 
@@ -471,7 +471,7 @@ export default function MapScreen({ navigation }: any) {
 
     showToast(`Perjalanan Hijau Disimpan! +${rec.poin} Poin`, 'success', 3000, 'top');
     setIsSaving(false);
-    
+
     // Zoom to fit the route for the screenshot
     if (ruteOSRM) {
       mapRef.current?.fitToCoordinates(ruteOSRM, {
@@ -534,7 +534,7 @@ export default function MapScreen({ navigation }: any) {
     <View style={styles.container}>
       {/* 1. PETA FULLSCREEN (Background) wrapped in ViewShot */}
       <ViewShot ref={mapShotRef} style={{ flex: 1, ...StyleSheet.absoluteFillObject }} options={{ format: 'png', quality: 1 }}>
-        
+
         {showTripShareModal && mapSnapshotUri ? (
           <Image source={{ uri: mapSnapshotUri }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
         ) : (
@@ -554,34 +554,34 @@ export default function MapScreen({ navigation }: any) {
               longitudeDelta: 0.05,
             } : undefined}
           >
-          {!isNavigating && ruteOSRM && ruteOSRM.length > 0 && (
-            <Polyline coordinates={ruteOSRM} strokeColor="#3b82f6" strokeWidth={5} />
-          )}
+            {!isNavigating && ruteOSRM && ruteOSRM.length > 0 && (
+              <Polyline coordinates={ruteOSRM} strokeColor="#3b82f6" strokeWidth={5} />
+            )}
 
-          {isNavigating && rutePassed.length > 0 && (
-            <Polyline coordinates={rutePassed} strokeColor="#9CA3AF" strokeWidth={5} />
-          )}
+            {isNavigating && rutePassed.length > 0 && (
+              <Polyline coordinates={rutePassed} strokeColor="#9CA3AF" strokeWidth={5} />
+            )}
 
-          {isNavigating && ruteRemaining.length > 0 && (
-            <Polyline coordinates={ruteRemaining} strokeColor="#3b82f6" strokeWidth={5} />
-          )}
+            {isNavigating && ruteRemaining.length > 0 && (
+              <Polyline coordinates={ruteRemaining} strokeColor="#3b82f6" strokeWidth={5} />
+            )}
 
-          {isNavigating && path.length > 0 && (
-            <Polyline coordinates={path} strokeColor="#1D9E75" strokeWidth={5} />
-          )}
+            {isNavigating && path.length > 0 && (
+              <Polyline coordinates={path} strokeColor="#1D9E75" strokeWidth={5} />
+            )}
 
-          {/* Draw original route when sharing */}
-          {showTripShareModal && ruteOSRM && ruteOSRM.length > 0 && (
-            <Polyline coordinates={ruteOSRM} strokeColor="#3b82f6" strokeWidth={5} />
-          )}
+            {/* Draw original route when sharing */}
+            {showTripShareModal && ruteOSRM && ruteOSRM.length > 0 && (
+              <Polyline coordinates={ruteOSRM} strokeColor="#3b82f6" strokeWidth={5} />
+            )}
 
-          {!isNavigating && asalLatLng && !showTripShareModal && (
-            <Marker coordinate={{ latitude: asalLatLng[0], longitude: asalLatLng[1] }} pinColor="#1D9E75" title="Asal" />
-          )}
-          {!isNavigating && tujuanLatLng && !showTripShareModal && (
-            <Marker coordinate={{ latitude: tujuanLatLng[0], longitude: tujuanLatLng[1] }} pinColor="#EF4444" title="Tujuan" />
-          )}
-        </MapView>
+            {!isNavigating && asalLatLng && !showTripShareModal && (
+              <Marker coordinate={{ latitude: asalLatLng[0], longitude: asalLatLng[1] }} pinColor="#1D9E75" title="Asal" />
+            )}
+            {!isNavigating && tujuanLatLng && !showTripShareModal && (
+              <Marker coordinate={{ latitude: tujuanLatLng[0], longitude: tujuanLatLng[1] }} pinColor="#EF4444" title="Tujuan" />
+            )}
+          </MapView>
         )}
 
         {/* STRATA-LIKE OVERLAY (Hanya tampil saat mau di-share agar ikut terfoto) */}
@@ -597,7 +597,7 @@ export default function MapScreen({ navigation }: any) {
                   <Text style={{ color: 'white', fontSize: 10, fontWeight: 'bold' }}>{savedTripData.date}</Text>
                 </View>
               </View>
-              
+
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 24 }}>
                 <View>
                   <Text style={{ color: 'white', opacity: 0.6, fontSize: 11, fontWeight: 'bold' }}>Jarak Ditempuh</Text>
@@ -627,263 +627,263 @@ export default function MapScreen({ navigation }: any) {
       {!showTripShareModal && (
         <>
           {/* 1.5 TOMBOL RE-CENTER LOCATION */}
-      <TouchableOpacity 
-        style={[styles.recenterButton, isNavigating ? { bottom: 220, top: 'auto', right: 16 } : isPickingMap ? { top: insets.top + 20, right: 16 } : { top: 260, right: 16 }]} 
-          onPress={() => {
-            if (location) {
-              if (isNavigating) {
-                mapRef.current?.animateCamera({ 
-                  center: location.coords, 
-                  heading: location.coords.heading || 0,
-                  pitch: 0,
-                  zoom: 18 
-                }, { duration: 1000 });
-              } else {
-                mapRef.current?.animateToRegion({
-                  latitude: location.coords.latitude,
-                  longitude: location.coords.longitude,
-                  latitudeDelta: 0.01,
-                  longitudeDelta: 0.01,
-                }, 1000);
+          <TouchableOpacity
+            style={[styles.recenterButton, isNavigating ? { bottom: 220, top: 'auto', right: 16 } : isPickingMap ? { top: insets.top + 20, right: 16 } : { top: 260, right: 16 }]}
+            onPress={() => {
+              if (location) {
+                if (isNavigating) {
+                  mapRef.current?.animateCamera({
+                    center: location.coords,
+                    heading: location.coords.heading || 0,
+                    pitch: 0,
+                    zoom: 18
+                  }, { duration: 1000 });
+                } else {
+                  mapRef.current?.animateToRegion({
+                    latitude: location.coords.latitude,
+                    longitude: location.coords.longitude,
+                    latitudeDelta: 0.01,
+                    longitudeDelta: 0.01,
+                  }, 1000);
+                }
               }
-            }
-          }}
-        >
-        <LocateFixed size={24} color="#1D9E75" />
-      </TouchableOpacity>
-
-      {/* 2. PANEL PENCARIAN (Floating di Atas) */}
-      {!isNavigating && !isPickingMap && (
-        <View style={[styles.topSearchPanel, { top: insets.top + 16 }]}>
-          <View style={[styles.searchCard, { flexDirection: 'row', alignItems: 'center' }]}>
-            <View style={{ flex: 1 }}>
-              <View style={{ zIndex: 2 }}>
-                <LocationInput
-                  label="Titik Asal"
-                  placeholder="Cari lokasi asal..."
-                  value={asal}
-                  onChange={setAsal}
-                  onPickMap={() => setIsPickingMap('asal')}
-                  onCurrentLocation={() => {
-                    if (location) {
-                      setAsal({
-                        lat: location.coords.latitude.toString(),
-                        lon: location.coords.longitude.toString(),
-                        display_name: 'Lokasi Anda Saat Ini'
-                      });
-                    } else {
-                      showToast('Lokasi belum tersedia', 'warning');
-                    }
-                  }}
-                />
-              </View>
-              <View style={{ zIndex: 1 }}>
-                <LocationInput
-                  label="Titik Tujuan"
-                  placeholder="Cari tujuan..."
-                  value={tujuan}
-                  onChange={setTujuan}
-                  onPickMap={() => setIsPickingMap('tujuan')}
-                />
-              </View>
-            </View>
-
-            <TouchableOpacity 
-              style={{ padding: 8, backgroundColor: '#F9FAFB', borderRadius: 20, marginLeft: 8, borderWidth: 1, borderColor: '#E5E7EB' }}
-              onPress={() => {
-                const temp = asal;
-                setAsal(tujuan);
-                setTujuan(temp);
-              }}
-            >
-              <ArrowUpDown size={20} color="#6B7280" />
-            </TouchableOpacity>
-
-            {isFetchingRoute && (
-              <View style={{ position: 'absolute', right: 24, top: 50, zIndex: 3 }}>
-                <ActivityIndicator size="small" color="#1D9E75" />
-              </View>
-            )}
-          </View>
-        </View>
-      )}
-
-      {/* 3. PANEL REKOMENDASI */}
-      {!isNavigating && !isPickingMap && ruteOSRM && (
-        <View style={[styles.bottomSheetPanel, { bottom: insets.bottom + 100 }]}>
-          <TouchableOpacity activeOpacity={0.8} onPress={() => setIsSheetExpanded(!isSheetExpanded)} style={styles.sheetHeaderArea}>
-            <View style={styles.sheetHandle} />
-            <Text style={styles.sheetTitle}>Rekomendasi Rute Hijau</Text>
-            {isSheetExpanded && <Text style={styles.sheetSubtitle}>Jarak est: {jarakKm} km • {durasiMenit} mnt (mobil)</Text>}
+            }}
+          >
+            <LocateFixed size={24} color="#1D9E75" />
           </TouchableOpacity>
 
-          {isSheetExpanded ? (
-            <ScrollView style={styles.recommendationList} showsVerticalScrollIndicator={false}>
-            {rekomendasi.map((rec, i) => (
-              <TouchableOpacity 
-                key={i} 
-                style={[styles.recCard, activeModa === rec.moda && styles.recCardHighlight]}
-                onPress={() => setActiveModa(rec.moda)}
-                activeOpacity={0.9}
-              >
-                <View style={styles.recHeader}>
-                  <Text style={styles.recModa}>{rec.moda}</Text>
-                  {i === 0 && (
-                    <View style={styles.badgeTerhijau}>
-                      <Leaf size={12} color="#085041" />
-                      <Text style={styles.badgeText}>Terhijau</Text>
-                    </View>
-                  )}
-                </View>
-
-                <View style={styles.recStats}>
-                  <View style={styles.recStatItem}>
-                    <Text style={styles.recStatLabel}>Emisi</Text>
-                    <Text style={styles.recStatValue}>{rec.emisi} kg</Text>
+          {/* 2. PANEL PENCARIAN (Floating di Atas) */}
+          {!isNavigating && !isPickingMap && (
+            <View style={[styles.topSearchPanel, { top: insets.top + 16 }]}>
+              <View style={[styles.searchCard, { flexDirection: 'row', alignItems: 'center' }]}>
+                <View style={{ flex: 1 }}>
+                  <View style={{ zIndex: 2 }}>
+                    <LocationInput
+                      label="Titik Asal"
+                      placeholder="Cari lokasi asal..."
+                      value={asal}
+                      onChange={setAsal}
+                      onPickMap={() => setIsPickingMap('asal')}
+                      onCurrentLocation={() => {
+                        if (location) {
+                          setAsal({
+                            lat: location.coords.latitude.toString(),
+                            lon: location.coords.longitude.toString(),
+                            display_name: 'Lokasi Anda Saat Ini'
+                          });
+                        } else {
+                          showToast('Lokasi belum tersedia', 'warning');
+                        }
+                      }}
+                    />
                   </View>
-                  <View style={styles.recStatItem}>
-                    <Text style={styles.recStatLabel}>Hemat</Text>
-                    <Text style={styles.recStatValue}>{rec.moda === 'Mobil Pribadi' ? '-' : `${rec.hemat} kg`}</Text>
-                  </View>
-                  <View style={styles.recStatItem}>
-                    <Text style={styles.recStatLabel}>Reward</Text>
-                    <Text style={[styles.recStatValue, { color: '#F59E0B' }]}>+{rec.poin} poin</Text>
+                  <View style={{ zIndex: 1 }}>
+                    <LocationInput
+                      label="Titik Tujuan"
+                      placeholder="Cari tujuan..."
+                      value={tujuan}
+                      onChange={setTujuan}
+                      onPickMap={() => setIsPickingMap('tujuan')}
+                    />
                   </View>
                 </View>
 
                 <TouchableOpacity
-                  style={[styles.btnNavigasi, rec.isTooFar && { backgroundColor: '#9CA3AF' }]}
-                  onPress={() => startNavigation(rec)}
-                  disabled={rec.isTooFar}
+                  style={{ padding: 8, backgroundColor: '#F9FAFB', borderRadius: 20, marginLeft: 8, borderWidth: 1, borderColor: '#E5E7EB' }}
+                  onPress={() => {
+                    const temp = asal;
+                    setAsal(tujuan);
+                    setTujuan(temp);
+                  }}
                 >
-                  <Play size={16} color={rec.isTooFar ? '#E5E7EB' : 'white'} fill={rec.isTooFar ? '#E5E7EB' : 'white'} />
-                  <Text style={styles.btnNavigasiText}>{rec.isTooFar ? 'Rute Terlalu Jauh' : 'Mulai Navigasi'}</Text>
+                  <ArrowUpDown size={20} color="#6B7280" />
                 </TouchableOpacity>
-              </TouchableOpacity>
-            ))}
-            <View style={{ height: 20 }} />
-          </ScrollView>
-          ) : (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingHorizontal: 16, marginTop: 8 }} contentContainerStyle={{ gap: 12 }}>
-              {rekomendasi.map((rec, i) => (
-                <TouchableOpacity 
-                  key={i} 
-                  style={{ backgroundColor: '#F3F4F6', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: activeModa === rec.moda ? '#1D9E75' : '#E5E7EB' }}
-                  onPress={() => { setActiveModa(rec.moda); setIsSheetExpanded(true); }}
-                >
-                  {rec.moda.includes('Mobil') ? <Car size={14} color="#4B5563" /> : rec.moda.includes('Motor') ? <Bike size={14} color="#4B5563" /> : <Train size={14} color="#4B5563" />}
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: '#4B5563' }}>{rec.moda.includes('Mobil') ? durasiMenit : Math.round(durasiMenit * 0.9)} mnt</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+
+                {isFetchingRoute && (
+                  <View style={{ position: 'absolute', right: 24, top: 50, zIndex: 3 }}>
+                    <ActivityIndicator size="small" color="#1D9E75" />
+                  </View>
+                )}
+              </View>
+            </View>
           )}
-        </View>
-      )}
 
-      {/* OVERLAY PICK MAP (Gojek-style) */}
-      {isPickingMap && (
-        <>
-          {/* Crosshair Tengah */}
-          <View pointerEvents="none" style={styles.crosshairContainer}>
-            <View style={styles.crosshairTooltip}>
-              <Text style={styles.crosshairText}>Geser peta untuk memilih</Text>
-            </View>
-            <MapPin size={40} color="#1D9E75" fill="white" style={styles.crosshairIcon} />
-            <View style={styles.crosshairDot} />
-          </View>
-
-          {/* Panel Bawah Konfirmasi */}
-          <View style={[styles.pickMapBottomPanel, { bottom: insets.bottom + 16, left: 16, right: 16 }]}>
-            <Text style={styles.pickMapTitle}>
-              Pilih Titik {isPickingMap === 'asal' ? 'Asal' : 'Tujuan'}
-            </Text>
-            <Text style={styles.pickMapSubtitle}>Posisikan jarum tepat di lokasi yang diinginkan</Text>
-
-            <View style={styles.pickMapActionRow}>
-              <TouchableOpacity style={styles.btnBatalPick} onPress={() => setIsPickingMap(null)}>
-                <Text style={styles.btnBatalPickText}>Batal</Text>
+          {/* 3. PANEL REKOMENDASI */}
+          {!isNavigating && !isPickingMap && ruteOSRM && (
+            <View style={[styles.bottomSheetPanel, { bottom: insets.bottom + 100 }]}>
+              <TouchableOpacity activeOpacity={0.8} onPress={() => setIsSheetExpanded(!isSheetExpanded)} style={styles.sheetHeaderArea}>
+                <View style={styles.sheetHandle} />
+                <Text style={styles.sheetTitle}>Rekomendasi Rute Hijau</Text>
+                {isSheetExpanded && <Text style={styles.sheetSubtitle}>Jarak est: {jarakKm} km • {durasiMenit} mnt (mobil)</Text>}
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.btnConfirmPick}
-                onPress={handleConfirmMapPick}
-                disabled={isReverseGeocoding}
-              >
-                {isReverseGeocoding ? <ActivityIndicator color="white" /> : <MapPin size={16} color="white" />}
-                <Text style={styles.btnConfirmPickText}>
-                  {isReverseGeocoding ? 'Menyimpan...' : 'Set Lokasi Ini'}
+
+              {isSheetExpanded ? (
+                <ScrollView style={styles.recommendationList} showsVerticalScrollIndicator={false}>
+                  {rekomendasi.map((rec, i) => (
+                    <TouchableOpacity
+                      key={i}
+                      style={[styles.recCard, activeModa === rec.moda && styles.recCardHighlight]}
+                      onPress={() => setActiveModa(rec.moda)}
+                      activeOpacity={0.9}
+                    >
+                      <View style={styles.recHeader}>
+                        <Text style={styles.recModa}>{rec.moda}</Text>
+                        {i === 0 && (
+                          <View style={styles.badgeTerhijau}>
+                            <Leaf size={12} color="#085041" />
+                            <Text style={styles.badgeText}>Terhijau</Text>
+                          </View>
+                        )}
+                      </View>
+
+                      <View style={styles.recStats}>
+                        <View style={styles.recStatItem}>
+                          <Text style={styles.recStatLabel}>Emisi</Text>
+                          <Text style={styles.recStatValue}>{rec.emisi} kg</Text>
+                        </View>
+                        <View style={styles.recStatItem}>
+                          <Text style={styles.recStatLabel}>Hemat</Text>
+                          <Text style={styles.recStatValue}>{rec.moda === 'Mobil Pribadi' ? '-' : `${rec.hemat} kg`}</Text>
+                        </View>
+                        <View style={styles.recStatItem}>
+                          <Text style={styles.recStatLabel}>Reward</Text>
+                          <Text style={[styles.recStatValue, { color: '#F59E0B' }]}>+{rec.poin} poin</Text>
+                        </View>
+                      </View>
+
+                      <TouchableOpacity
+                        style={[styles.btnNavigasi, rec.isTooFar && { backgroundColor: '#9CA3AF' }]}
+                        onPress={() => startNavigation(rec)}
+                        disabled={rec.isTooFar}
+                      >
+                        <Play size={16} color={rec.isTooFar ? '#E5E7EB' : 'white'} fill={rec.isTooFar ? '#E5E7EB' : 'white'} />
+                        <Text style={styles.btnNavigasiText}>{rec.isTooFar ? 'Rute Terlalu Jauh' : 'Mulai Navigasi'}</Text>
+                      </TouchableOpacity>
+                    </TouchableOpacity>
+                  ))}
+                  <View style={{ height: 20 }} />
+                </ScrollView>
+              ) : (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingHorizontal: 16, marginTop: 8 }} contentContainerStyle={{ gap: 12 }}>
+                  {rekomendasi.map((rec, i) => (
+                    <TouchableOpacity
+                      key={i}
+                      style={{ backgroundColor: '#F3F4F6', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: activeModa === rec.moda ? '#1D9E75' : '#E5E7EB' }}
+                      onPress={() => { setActiveModa(rec.moda); setIsSheetExpanded(true); }}
+                    >
+                      {rec.moda.includes('Mobil') ? <Car size={14} color="#4B5563" /> : rec.moda.includes('Motor') ? <Bike size={14} color="#4B5563" /> : <Train size={14} color="#4B5563" />}
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: '#4B5563' }}>{rec.moda.includes('Mobil') ? durasiMenit : Math.round(durasiMenit * 0.9)} mnt</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+            </View>
+          )}
+
+          {/* OVERLAY PICK MAP (Gojek-style) */}
+          {isPickingMap && (
+            <>
+              {/* Crosshair Tengah */}
+              <View pointerEvents="none" style={styles.crosshairContainer}>
+                <View style={styles.crosshairTooltip}>
+                  <Text style={styles.crosshairText}>Geser peta untuk memilih</Text>
+                </View>
+                <MapPin size={40} color="#1D9E75" fill="white" style={styles.crosshairIcon} />
+                <View style={styles.crosshairDot} />
+              </View>
+
+              {/* Panel Bawah Konfirmasi */}
+              <View style={[styles.pickMapBottomPanel, { bottom: insets.bottom + 16, left: 16, right: 16 }]}>
+                <Text style={styles.pickMapTitle}>
+                  Pilih Titik {isPickingMap === 'asal' ? 'Asal' : 'Tujuan'}
                 </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </>
-      )}
+                <Text style={styles.pickMapSubtitle}>Posisikan jarum tepat di lokasi yang diinginkan</Text>
 
-      {/* 4. OVERLAY SAAT NAVIGASI BERJALAN */}
-      {isNavigating && (
-        <>
-          <View style={[styles.navTopOverlay, { top: insets.top + 16 }]}>
-            <View style={styles.navTopCard}>
-              <View style={styles.navHeader}>
-                <View style={styles.navHeaderLeft}>
-                  <View style={styles.navIconBg}><Navigation size={16} color="white" /></View>
-                  <View>
-                    <Text style={styles.navTitle}>Navigasi Aktif</Text>
-                    <Text style={styles.navSubtitle}>{selectedModa}</Text>
+                <View style={styles.pickMapActionRow}>
+                  <TouchableOpacity style={styles.btnBatalPick} onPress={() => setIsPickingMap(null)}>
+                    <Text style={styles.btnBatalPickText}>Batal</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.btnConfirmPick}
+                    onPress={handleConfirmMapPick}
+                    disabled={isReverseGeocoding}
+                  >
+                    {isReverseGeocoding ? <ActivityIndicator color="white" /> : <MapPin size={16} color="white" />}
+                    <Text style={styles.btnConfirmPickText}>
+                      {isReverseGeocoding ? 'Menyimpan...' : 'Set Lokasi Ini'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </>
+          )}
+
+          {/* 4. OVERLAY SAAT NAVIGASI BERJALAN */}
+          {isNavigating && (
+            <>
+              <View style={[styles.navTopOverlay, { top: insets.top + 16 }]}>
+                <View style={styles.navTopCard}>
+                  <View style={styles.navHeader}>
+                    <View style={styles.navHeaderLeft}>
+                      <View style={styles.navIconBg}><Navigation size={16} color="white" /></View>
+                      <View>
+                        <Text style={styles.navTitle}>Navigasi Aktif</Text>
+                        <Text style={styles.navSubtitle}>{selectedModa}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.navGpsBadge}>
+                      <View style={styles.gpsDot} />
+                      <Text style={styles.gpsText}>GPS Aktif</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.progressContainer}>
+                    <View style={styles.progressHeader}>
+                      <Text style={styles.progressLabel}>Progress</Text>
+                      <Text style={styles.progressValue}>{persenProgress}%</Text>
+                    </View>
+                    <View style={styles.progressBarBg}>
+                      <View style={[styles.progressBarFill, { width: `${persenProgress}%` }]} />
+                    </View>
+                  </View>
+
+                  <View style={styles.navStatsGrid}>
+                    <View style={styles.navStatBox}>
+                      <Text style={styles.navStatValue}>{jarakDitempuh.toFixed(1)}</Text>
+                      <Text style={styles.navStatLabel}>km jalan</Text>
+                    </View>
+                    <View style={styles.navStatBox}>
+                      <Text style={styles.navStatValue}>{Math.max(0, jarakKm - jarakDitempuh).toFixed(1)}</Text>
+                      <Text style={styles.navStatLabel}>km sisa</Text>
+                    </View>
+                    <View style={styles.navStatBox}>
+                      <Text style={styles.navStatValue}>{Math.floor(navWaktu / 60)}:{navWaktu % 60 < 10 ? '0' : ''}{navWaktu % 60}</Text>
+                      <Text style={styles.navStatLabel}>waktu</Text>
+                    </View>
                   </View>
                 </View>
-                <View style={styles.navGpsBadge}>
-                  <View style={styles.gpsDot} />
-                  <Text style={styles.gpsText}>GPS Aktif</Text>
-                </View>
               </View>
 
-              <View style={styles.progressContainer}>
-                <View style={styles.progressHeader}>
-                  <Text style={styles.progressLabel}>Progress</Text>
-                  <Text style={styles.progressValue}>{persenProgress}%</Text>
-                </View>
-                <View style={styles.progressBarBg}>
-                  <View style={[styles.progressBarFill, { width: `${persenProgress}%` }]} />
-                </View>
-              </View>
-
-              <View style={styles.navStatsGrid}>
-                <View style={styles.navStatBox}>
-                  <Text style={styles.navStatValue}>{jarakDitempuh.toFixed(1)}</Text>
-                  <Text style={styles.navStatLabel}>km jalan</Text>
-                </View>
-                <View style={styles.navStatBox}>
-                  <Text style={styles.navStatValue}>{Math.max(0, jarakKm - jarakDitempuh).toFixed(1)}</Text>
-                  <Text style={styles.navStatLabel}>km sisa</Text>
-                </View>
-                <View style={styles.navStatBox}>
-                  <Text style={styles.navStatValue}>{Math.floor(navWaktu / 60)}:{navWaktu % 60 < 10 ? '0' : ''}{navWaktu % 60}</Text>
-                  <Text style={styles.navStatLabel}>waktu</Text>
+              {/* Bottom Card Navigasi */}
+              <View style={[styles.navBottomOverlay, { bottom: insets.bottom + 16 }]}>
+                <View style={styles.navBottomCard}>
+                  {persenProgress < 50 && (
+                    <Text style={styles.navHint}>Tempuh minimal 50% rute untuk menyelesaikan</Text>
+                  )}
+                  <View style={styles.navActionRow}>
+                    <TouchableOpacity style={styles.btnBatal} onPress={stopNavigation} disabled={isSaving}>
+                      <Square size={16} color="#EF4444" fill="#EF4444" />
+                      <Text style={styles.btnBatalText}>Batal</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.btnSelesai} onPress={saveTrip} disabled={isSaving}>
+                      {isSaving ? <ActivityIndicator color="white" /> : <Navigation size={16} color="white" />}
+                      <Text style={styles.btnSelesaiText}>{isSaving ? 'Menyimpan...' : 'Selesai & Simpan'}</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </View>
-            </View>
-          </View>
-
-          {/* Bottom Card Navigasi */}
-          <View style={[styles.navBottomOverlay, { bottom: insets.bottom + 16 }]}>
-            <View style={styles.navBottomCard}>
-              {persenProgress < 50 && (
-                <Text style={styles.navHint}>Tempuh minimal 50% rute untuk menyelesaikan</Text>
-              )}
-              <View style={styles.navActionRow}>
-                <TouchableOpacity style={styles.btnBatal} onPress={stopNavigation} disabled={isSaving}>
-                  <Square size={16} color="#EF4444" fill="#EF4444" />
-                  <Text style={styles.btnBatalText}>Batal</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.btnSelesai} onPress={saveTrip} disabled={isSaving}>
-                  {isSaving ? <ActivityIndicator color="white" /> : <Navigation size={16} color="white" />}
-                  <Text style={styles.btnSelesaiText}>{isSaving ? 'Menyimpan...' : 'Selesai & Simpan'}</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </>
-      )}
+            </>
+          )}
 
         </>
       )}
@@ -891,11 +891,11 @@ export default function MapScreen({ navigation }: any) {
       {/* SHARE ACTIONS OVERLAY (Bottom Sheet khusus Share) */}
       {showTripShareModal && savedTripData && (
         <View style={{ position: 'absolute', bottom: insets.bottom + 96, left: 16, right: 16, padding: 24, backgroundColor: 'white', borderRadius: 32, elevation: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 20 }}>
-          <Text style={{ fontSize: 20, fontWeight: '900', textAlign: 'center', marginBottom: 8, color: '#1F2937' }}>Perjalanan Selesai! 🎉</Text>
+          <Text style={{ fontSize: 20, fontWeight: '900', textAlign: 'center', marginBottom: 8, color: '#1F2937' }}>Perjalanan Selesai!</Text>
           <Text style={{ fontSize: 13, color: '#6B7280', textAlign: 'center', marginBottom: 24 }}>Pamerkan rute hijaumu ke teman-teman dan jadilah inspirasi bagi mereka.</Text>
-          
-          <TouchableOpacity 
-            style={[styles.btnSelesai, { marginBottom: 12, height: 56, borderRadius: 28, elevation: 4, shadowColor: '#10B981', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 }]} 
+
+          <TouchableOpacity
+            style={[styles.btnSelesai, { marginBottom: 12, height: 56, borderRadius: 28, elevation: 4, shadowColor: '#10B981', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 }]}
             onPress={async () => {
               if (mapShotRef.current) {
                 try {
@@ -910,9 +910,9 @@ export default function MapScreen({ navigation }: any) {
             <ShareIcon color="white" size={20} />
             <Text style={[styles.btnSelesaiText, { fontSize: 16 }]}>Bagikan Gambar Rute</Text>
           </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[styles.btnBatal, { backgroundColor: '#F3F4F6', height: 56, borderRadius: 28 }]} 
+
+          <TouchableOpacity
+            style={[styles.btnBatal, { backgroundColor: '#F3F4F6', height: 56, borderRadius: 28 }]}
             onPress={() => {
               setShowTripShareModal(false);
               stopNavigation();
