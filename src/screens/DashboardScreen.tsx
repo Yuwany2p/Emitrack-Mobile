@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   StyleSheet, Text, View, ScrollView, TouchableOpacity,
-  Dimensions, ActivityIndicator, Modal, Share as RNShare, Animated, Alert
+  Dimensions, ActivityIndicator, Modal, Share as RNShare, Animated, Alert, RefreshControl
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,6 +10,9 @@ import {
   TreePine, BookOpen, Calculator, Zap, Share as ShareIcon, X, MessageSquare
 } from 'lucide-react-native';
 import Svg, { Path, Defs, LinearGradient as SvgLinearGradient, Stop, Rect, Text as SvgText } from 'react-native-svg';
+import ViewShot from 'react-native-view-shot';
+import * as Sharing from 'expo-sharing';
+
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { RATA_RATA_NASIONAL } from '../lib/emisi';
@@ -19,6 +22,8 @@ import { SkeletonCard, SkeletonRow } from '../components/Skeleton';
 import { useFocusEffect } from '@react-navigation/native';
 
 const { width, height: screenHeight } = Dimensions.get('window');
+const cardWidth = width * 0.85;
+const cardHeight = cardWidth * (16 / 9);
 
 function sapaanWaktu() {
   const jam = new Date().getHours();
@@ -63,6 +68,7 @@ export default function DashboardScreen({ navigation }: any) {
   const [showShareModal, setShowShareModal] = useState(false);
   const [emisiHariIni, setEmisiHariIni] = useState(0);
   const [chartData, setChartData] = useState<any[]>([]);
+  const viewShotRef = useRef<any>(null);
 
   // Animated Header Setup
   const HEADER_HEIGHT = 90;
@@ -180,8 +186,16 @@ export default function DashboardScreen({ navigation }: any) {
 
   useFocusEffect(useCallback(() => { fetchData(); }, [fetchData]));
 
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchData();
+    setRefreshing(false);
+  }, [fetchData]);
+
   // --- Calculations ---
-  const displayName = profile?.username || user?.email?.split('@')[0] || 'User';
+  const rawName = profile?.username || user?.email?.split('@')[0] || 'User';
+  const displayName = rawName.length > 8 ? rawName.substring(0, 8) + '...' : rawName;
   const poin = profile?.total_poin ?? 0;
   const streak = profile?.streak ?? 0;
 
@@ -241,15 +255,17 @@ export default function DashboardScreen({ navigation }: any) {
               <Text style={styles.greeting}>{sapaanWaktu()}, {displayName}! 👋</Text>
               <Text style={styles.subtitle}>Mari buat bumi lebih hijau. (Tap to seed data)</Text>
             </TouchableOpacity> */}
-            <View style={{ flex: 1 }}>
-              <Text style={styles.greeting}>{sapaanWaktu()}, {displayName}! 👋</Text>
-              <Text style={styles.subtitle}>Mari buat bumi lebih hijau.</Text>
+            <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
+              <Text style={styles.greeting} numberOfLines={1}>{sapaanWaktu()}, {displayName}! 👋</Text>
+              <Text style={styles.subtitle} numberOfLines={1}>Mari buat bumi lebih hijau.</Text>
             </View>
 
 
-            <TouchableOpacity style={styles.bagikanPill} onPress={() => setShowShareModal(true)}>
-              <ShareIcon color="#1D9E75" size={14} />
-              <Text style={styles.bagikanText}>Bagikan</Text>
+            <TouchableOpacity 
+              style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#E1F5EE', justifyContent: 'center', alignItems: 'center' }} 
+              onPress={() => setShowShareModal(true)}
+            >
+              <ShareIcon color="#1D9E75" size={18} />
             </TouchableOpacity>
 
             <View style={styles.streakBadge}>
@@ -267,7 +283,7 @@ export default function DashboardScreen({ navigation }: any) {
         style={styles.container}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
-          paddingTop: insets.top + HEADER_HEIGHT - 10,
+          paddingTop: insets.top + HEADER_HEIGHT - 5,
           paddingBottom: 100 + insets.bottom,
         }}
         onScroll={Animated.event(
@@ -275,6 +291,7 @@ export default function DashboardScreen({ navigation }: any) {
           { useNativeDriver: true }
         )}
         scrollEventThrottle={16}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#1D9E75']} />}
       >
         <View style={{ marginBottom: 14 }}><LevelBadge poin={poin} size="lg" /></View>
 
@@ -459,21 +476,79 @@ export default function DashboardScreen({ navigation }: any) {
       </Animated.ScrollView>
 
       {/* Share Modal */}
-      <Modal visible={showShareModal} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
+      <Modal visible={showShareModal} transparent animationType="fade" onRequestClose={() => setShowShareModal(false)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowShareModal(false)}>
           <View style={styles.modalContainer}>
-            <TouchableOpacity style={styles.closeBtn} onPress={() => setShowShareModal(false)}><X color="white" size={24} /></TouchableOpacity>
-            <View style={styles.shareCard}>
-              <View style={styles.shareCardHeader}><Text style={styles.shareLogoText}>EmiTrack</Text><View style={styles.wrappedBadge}><Text style={styles.wrappedText}>Earth Hero 2026</Text></View></View>
-              <View style={styles.shareCardContent}><Text style={styles.shareTitle}>Aksi Nyata Saya</Text><Text style={styles.shareSubtitle}>Telah Menebus Emisi Sebesar</Text><Text style={styles.shareBigValue}>{fmtEmisi(totalHematTrips)}</Text><Text style={styles.shareUnit}>kg CO₂</Text></View>
-              <View style={styles.shareCardFooter}><View style={styles.footerStatBox}><Text style={styles.footerStatLabel}>Level</Text><Text style={styles.footerStatVal}>{getLevelByPoin(poin).nama}</Text></View><View style={styles.footerStatBox}><Text style={styles.footerStatLabel}>Streak</Text><Text style={styles.footerStatVal}>{profile?.streak ?? 0} Hari</Text></View></View>
-            </View>
+            
+            {/* The Poster */}
+            <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
+              <View style={styles.shareCardContainer}>
+                <ViewShot ref={viewShotRef} options={{ format: 'png', quality: 1.0 }} style={{ flex: 1 }}>
+                  <LinearGradient
+                    colors={['#064E3B', '#022C22']}
+                    style={styles.shareCard}
+                  >
+                  {/* Watermark/Header */}
+                  <View style={styles.shareCardHeader}>
+                    <Text style={styles.shareLogoText}>EmiTrack</Text>
+                    <View style={styles.wrappedBadge}>
+                      <Text style={styles.wrappedText}>Earth Hero 2026</Text>
+                    </View>
+                  </View>
+
+                  {/* Main Content */}
+                  <View style={styles.shareCardContent}>
+                    <Text style={styles.shareTitle}>Aksi Nyata Saya</Text>
+                    <Text style={styles.shareSubtitle}>Telah Berhasil Menghemat Emisi</Text>
+                    <Text style={styles.shareBigValue}>{fmtEmisi(totalHematTrips)}</Text>
+                    <Text style={styles.shareUnit}>kg CO₂</Text>
+                  </View>
+
+                  {/* Footer Stats */}
+                  <View style={styles.shareCardFooter}>
+                    <View style={styles.footerStatBox}>
+                      <Text style={styles.footerStatLabel}>Level</Text>
+                      <Text style={styles.footerStatVal}>{getLevelByPoin(poin).nama}</Text>
+                    </View>
+                    <View style={styles.footerStatBox}>
+                      <Text style={styles.footerStatLabel}>Streak</Text>
+                      <Text style={styles.footerStatVal}>{profile?.streak ?? 0} Hari</Text>
+                    </View>
+                  </View>
+
+                  {/* Background Decor */}
+                  <Map color="rgba(255,255,255,0.03)" size={200} style={{ position: 'absolute', bottom: -50, right: -50, zIndex: -1 }} />
+                </LinearGradient>
+              </ViewShot>
+              </View>
+            </TouchableOpacity>
+
+            {/* Actions */}
             <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.shareBtnMain} onPress={() => RNShare.share({ message: `🌿 Saya hemat ${fmtEmisi(totalHematTrips)}kg CO₂ di EmiTrack!` })}><MessageSquare color="white" size={16} /><Text style={styles.shareBtnText}>Share Achievement</Text></TouchableOpacity>
-              <TouchableOpacity style={styles.closeBtnText} onPress={() => setShowShareModal(false)}><Text style={styles.cancelText}>Tutup</Text></TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.shareBtnMain} 
+                onPress={async () => {
+                  if (viewShotRef.current) {
+                    try {
+                      const uri = await viewShotRef.current.capture();
+                      await Sharing.shareAsync(uri);
+                    } catch (err) {
+                      console.log('Error sharing', err);
+                    }
+                  }
+                }}
+              >
+                <ShareIcon color="#064E3B" size={20} />
+                <Text style={styles.shareBtnText}>Bagikan Pencapaian</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity style={styles.closeBtnIcon} onPress={() => setShowShareModal(false)}>
+                <X color="white" size={24} />
+              </TouchableOpacity>
             </View>
+
           </View>
-        </View>
+        </TouchableOpacity>
       </Modal>
 
       {/* Dynamic Status Bar Overlay with translateY for native driver support */}
@@ -596,7 +671,8 @@ const styles = StyleSheet.create({
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 20 },
   modalContainer: { width: '100%', alignItems: 'center' },
   closeBtn: { alignSelf: 'flex-end', marginBottom: 10, padding: 10 },
-  shareCard: { width: width * 0.85, height: screenHeight * 0.55, backgroundColor: '#085041', borderRadius: 32, padding: 30, justifyContent: 'space-between' },
+  shareCardContainer: { width: cardWidth, height: cardHeight, borderRadius: 32, overflow: 'hidden' },
+  shareCard: { flex: 1, backgroundColor: '#085041', padding: 30, justifyContent: 'space-between' },
   shareCardHeader: { alignItems: 'center', gap: 8 },
   shareLogoText: { fontSize: 24, fontWeight: '900', color: 'white' },
   wrappedBadge: { backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
@@ -610,11 +686,10 @@ const styles = StyleSheet.create({
   footerStatBox: { flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', padding: 12, borderRadius: 16, alignItems: 'center' },
   footerStatLabel: { fontSize: 8, color: 'white', opacity: 0.5, fontWeight: 'bold' },
   footerStatVal: { fontSize: 12, color: 'white', fontWeight: '900', marginTop: 2 },
-  modalActions: { width: '100%', marginTop: 20, gap: 12 },
-  shareBtnMain: { backgroundColor: '#1D9E75', height: 60, borderRadius: 20, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10 },
-  shareBtnText: { color: 'white', fontSize: 15, fontWeight: '900' },
-  closeBtnText: { height: 50, justifyContent: 'center', alignItems: 'center' },
-  cancelText: { color: 'white', fontSize: 13, fontWeight: 'bold', opacity: 0.6 },
+  modalActions: { width: width * 0.85, marginTop: 20, alignItems: 'center', gap: 16 },
+  shareBtnMain: { backgroundColor: '#10B981', width: '100%', height: 56, borderRadius: 28, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10, elevation: 4, shadowColor: '#10B981', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 },
+  shareBtnText: { color: '#064E3B', fontSize: 16, fontWeight: '900' },
+  closeBtnIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center' },
 
   // Utility Colors
   bgAmber: { backgroundColor: '#F59E0B' },

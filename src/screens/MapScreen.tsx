@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, Alert, ScrollView, ActivityIndicator, Dimensions, Animated, PanResponder } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, Alert, ScrollView, ActivityIndicator, Dimensions, Animated, PanResponder, Modal, Share, Image } from 'react-native';
 import MapView, { Polyline, Marker } from 'react-native-maps';
 import * as Location from 'expo-location';
-import { Play, Square, MapPin, Navigation, Bike, Car, Train, Bus, Leaf, LocateFixed } from 'lucide-react-native';
+import { Play, Square, MapPin, Navigation, Bike, Car, Train, Bus, Leaf, LocateFixed, ArrowUpDown, ChevronUp, Share as ShareIcon, X } from 'lucide-react-native';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import ViewShot from 'react-native-view-shot';
+import * as Sharing from 'expo-sharing';
+import { LinearGradient } from 'expo-linear-gradient';
 import { hitungJarakKumulatif, validasiPerjalanan, isOffRoute } from '../lib/gps';
 import { hitungEmisi, rekomendasiRute, Rekomendasi, RATA_RATA_NASIONAL } from '../lib/emisi';
 import { showToast } from '../components/Toast';
@@ -19,6 +22,10 @@ export default function MapScreen({ navigation }: any) {
 
   // -- State Peta & GPS Default --
   const mapRef = useRef<MapView>(null);
+  const mapShotRef = useRef<any>(null);
+  const [showTripShareModal, setShowTripShareModal] = useState(false);
+  const [savedTripData, setSavedTripData] = useState<any>(null);
+  const [mapSnapshotUri, setMapSnapshotUri] = useState<string | null>(null);
   const watchSubscription = useRef<Location.LocationSubscription | null>(null);
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
 
@@ -150,9 +157,9 @@ export default function MapScreen({ navigation }: any) {
     });
   }, [navigation, isPickingMap, isNavigating]);
 
-  // 2. Kalkulasi Rute GMaps saat Asal & Tujuan atau mode aktif berubah
   useEffect(() => {
     if (asal && tujuan) {
+      // Note: We use a separate state to track if we need to auto-select the greenest
       fetchGoogleRoute(asal, tujuan, activeModa);
     } else {
       setRuteOSRM(null);
@@ -160,7 +167,7 @@ export default function MapScreen({ navigation }: any) {
       setDurasiMenit(0);
       setSelectedModa(null);
     }
-  }, [asal, tujuan, activeModa]);
+  }, [asal, tujuan]); // Removed activeModa to prevent refetching when user just changes the tab
 
   const GOOGLE_MAPS_API_KEY = 'AIzaSyARVvY83wAu_H6ezvB-WmhOHsaN63hHmMk';
 
@@ -236,14 +243,23 @@ export default function MapScreen({ navigation }: any) {
         // duration bernilai string e.g., "217s"
         const durationSecs = parseInt(route.duration.replace('s', ''));
         setDurasiMenit(Math.round(durationSecs / 60));
+        
+        // Auto-select the greenest mode when a new route is loaded
+        const newEmisiMobil = hitungEmisi('mobil', 'ron92', Number((route.distanceMeters / 1000).toFixed(1)));
+        const newRecs = rekomendasiRute(newEmisiMobil, Number((route.distanceMeters / 1000).toFixed(1)), Number(start.lat), Number(start.lon), Number(end.lat), Number(end.lon));
+        if (newRecs && newRecs.length > 0) {
+          setActiveModa(newRecs[0].moda);
+        }
 
-        // Paskan kamera peta ke rute
-        setTimeout(() => {
-          mapRef.current?.fitToCoordinates(coords, {
-            edgePadding: { top: 250, right: 50, bottom: 400, left: 50 },
-            animated: true,
-          });
-        }, 500);
+        // Paskan kamera peta ke rute (hanya jika tidak sedang navigasi aktif)
+        if (!isNavigating) {
+          setTimeout(() => {
+            mapRef.current?.fitToCoordinates(coords, {
+              edgePadding: { top: 250, right: 50, bottom: 400, left: 50 },
+              animated: true,
+            });
+          }, 500);
+        }
       } else {
         throw new Error('Tidak ada rute yang ditemukan');
       }
@@ -263,14 +279,14 @@ export default function MapScreen({ navigation }: any) {
     const { latitude, longitude } = mapCenterRegion;
 
     try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`, {
-        headers: {
-          'User-Agent': 'EmitrackMobileApp/1.0 (contact@emitrack.com)',
-          'Accept': 'application/json'
-        }
-      });
+      const res = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${GOOGLE_MAPS_API_KEY}`);
       const data = await res.json();
-      const addressName = data.display_name || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+      
+      let addressName = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+      if (data.status === 'OK' && data.results && data.results.length > 0) {
+        // Menggunakan alamat yang paling relevan (result pertama)
+        addressName = data.results[0].formatted_address;
+      }
 
       const nominatimData: NominatimResult = {
         lat: latitude.toString(),
@@ -284,7 +300,7 @@ export default function MapScreen({ navigation }: any) {
         setTujuan(nominatimData);
       }
 
-      showToast(`Titik ${isPickingMap === 'asal' ? 'Asal' : 'Tujuan'} berhasil dipilih`, 'success');
+      showToast(`Titik ${isPickingMap === 'asal' ? 'Asal' : 'Tujuan'} berhasil dipilih`, 'success', 3000, 'top');
     } catch (error) {
       showToast('Gagal mendapatkan alamat dari titik ini', 'warning');
     } finally {
@@ -338,7 +354,7 @@ export default function MapScreen({ navigation }: any) {
         mapRef.current?.animateCamera({ 
           center: loc.coords, 
           heading: loc.coords.heading || 0,
-          pitch: 45,
+          pitch: 0,
           zoom: 18 
         }, { duration: 1000 });
 
@@ -355,7 +371,7 @@ export default function MapScreen({ navigation }: any) {
       
       if (offRoute && now - lastRerouteTime.current > 15000) {
         lastRerouteTime.current = now;
-        showToast('Keluar jalur, mencari rute baru...', 'info');
+        showToast('Keluar jalur, mencari rute baru...', 'info', 3000, 'top');
         
         setAsal({
           lat: location.coords.latitude.toString(),
@@ -400,11 +416,15 @@ export default function MapScreen({ navigation }: any) {
     const walkedArray: [number, number][] = path.map(p => [p.latitude, p.longitude]);
     const hasil = validasiPerjalanan(walkedArray, jarakKm, tujuanLatLng);
 
-    if (!hasil.valid) {
-      showToast(hasil.pesan, 'warning');
-      setIsSaving(false);
-      return;
-    }
+    // BYPASS UNTUK TESTING (Sesuai permintaan)
+    // if (!hasil.valid) {
+    //   showToast(hasil.pesan, 'warning');
+    //   setIsSaving(false);
+    //   return;
+    // }
+    
+    // Agar saat ditest langsung menyimpan seolah-olah jalan 100%
+    hasil.jarakAktual = jarakKm;
 
     const rec = rekomendasi.find(r => r.moda === selectedModa);
     if (!rec) {
@@ -412,13 +432,14 @@ export default function MapScreen({ navigation }: any) {
     }
 
     const isPrivate = selectedModa.includes('Pribadi');
+    const isSepeda = selectedModa.toLowerCase().includes('sepeda');
     const dbJenis = isPrivate
       ? (selectedModa.toLowerCase().includes('motor') ? 'motor' : 'mobil')
-      : 'transportasi_umum';
+      : isSepeda ? 'sepeda' : 'transportasi_umum';
 
     const dbBbm = isPrivate
       ? 'ron92'
-      : selectedModa.toLowerCase().includes('sepeda') ? 'sepeda'
+      : isSepeda ? 'sepeda'
         : selectedModa.toLowerCase().includes('krl') ? 'krl' : 'transjakarta';
 
     const emisiDihemat = isPrivate ? 0 : Math.max(0, rec.hemat);
@@ -448,63 +469,173 @@ export default function MapScreen({ navigation }: any) {
       }).eq('id', user.id);
     }
 
-    showToast(`Perjalanan Hijau Disimpan! +${rec.poin} Poin`, 'success');
+    showToast(`Perjalanan Hijau Disimpan! +${rec.poin} Poin`, 'success', 3000, 'top');
     setIsSaving(false);
-    stopNavigation();
+    
+    // Zoom to fit the route for the screenshot
+    if (ruteOSRM) {
+      mapRef.current?.fitToCoordinates(ruteOSRM, {
+        edgePadding: { top: 250, right: 80, bottom: 280, left: 80 },
+        animated: true,
+      });
+    }
 
-    // Redirect ke Riwayat/Dashboard
-    navigation.navigate('Dashboard');
+    setSavedTripData({
+      jarak: hasil.jarakAktual,
+      emisiHemat: emisiDihemat,
+      poin: rec.poin,
+      jenis: dbJenis,
+      bbm: dbBbm,
+      modaLengkap: selectedModa,
+      date: new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
+    });
+
+    // Wait for zoom animation to finish before taking snapshot
+    setTimeout(async () => {
+      try {
+        if (mapRef.current) {
+          const uri = await mapRef.current.takeSnapshot({
+            format: 'png',
+            quality: 0.9,
+            result: 'file'
+          });
+          setMapSnapshotUri(uri);
+        }
+      } catch (err) {
+        console.log('Error map snapshot', err);
+      }
+      stopNavigation();
+      setShowTripShareModal(true);
+    }, 1500);
   };
 
   const jarakDitempuh = hitungJarakKumulatif(path);
   const persenProgress = jarakKm > 0 ? Math.min(100, Math.round((jarakDitempuh / jarakKm) * 100)) : 0;
 
+  const getClosestPointIndex = (loc: Location.LocationObject, route: { latitude: number, longitude: number }[]) => {
+    let minDistance = Infinity;
+    let minIndex = 0;
+    for (let i = 0; i < route.length; i++) {
+      const p = route[i];
+      const d = Math.pow(p.latitude - loc.coords.latitude, 2) + Math.pow(p.longitude - loc.coords.longitude, 2);
+      if (d < minDistance) {
+        minDistance = d;
+        minIndex = i;
+      }
+    }
+    return minIndex;
+  };
+
+  const closestIdx = (isNavigating && location && ruteOSRM) ? getClosestPointIndex(location, ruteOSRM) : 0;
+  const rutePassed = (isNavigating && ruteOSRM) ? ruteOSRM.slice(0, closestIdx + 1) : [];
+  const ruteRemaining = (isNavigating && ruteOSRM) ? ruteOSRM.slice(closestIdx) : ruteOSRM || [];
+
   return (
     <View style={styles.container}>
-      {/* 1. PETA FULLSCREEN (Background) */}
-      <MapView
-        ref={mapRef}
-        style={StyleSheet.absoluteFillObject}
-        showsUserLocation={true}
-        showsMyLocationButton={false}
-        showsCompass={false}
-        onRegionChangeComplete={(region) => {
-          if (isPickingMap) setMapCenterRegion(region);
-        }}
-        initialRegion={location ? {
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
-          latitudeDelta: 0.05,
-          longitudeDelta: 0.05,
-        } : undefined}
-      >
-        {ruteOSRM && ruteOSRM.length > 0 && (
-          <Polyline coordinates={ruteOSRM} strokeColor="#3b82f6" strokeWidth={5} />
+      {/* 1. PETA FULLSCREEN (Background) wrapped in ViewShot */}
+      <ViewShot ref={mapShotRef} style={{ flex: 1, ...StyleSheet.absoluteFillObject }} options={{ format: 'png', quality: 1 }}>
+        
+        {showTripShareModal && mapSnapshotUri ? (
+          <Image source={{ uri: mapSnapshotUri }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+        ) : (
+          <MapView
+            ref={mapRef}
+            style={StyleSheet.absoluteFillObject}
+            showsUserLocation={!showTripShareModal}
+            showsMyLocationButton={false}
+            showsCompass={false}
+            onRegionChangeComplete={(region) => {
+              if (isPickingMap) setMapCenterRegion(region);
+            }}
+            initialRegion={location ? {
+              latitude: location.coords.latitude,
+              longitude: location.coords.longitude,
+              latitudeDelta: 0.05,
+              longitudeDelta: 0.05,
+            } : undefined}
+          >
+          {!isNavigating && ruteOSRM && ruteOSRM.length > 0 && (
+            <Polyline coordinates={ruteOSRM} strokeColor="#3b82f6" strokeWidth={5} />
+          )}
+
+          {isNavigating && rutePassed.length > 0 && (
+            <Polyline coordinates={rutePassed} strokeColor="#9CA3AF" strokeWidth={5} />
+          )}
+
+          {isNavigating && ruteRemaining.length > 0 && (
+            <Polyline coordinates={ruteRemaining} strokeColor="#3b82f6" strokeWidth={5} />
+          )}
+
+          {isNavigating && path.length > 0 && (
+            <Polyline coordinates={path} strokeColor="#1D9E75" strokeWidth={5} />
+          )}
+
+          {/* Draw original route when sharing */}
+          {showTripShareModal && ruteOSRM && ruteOSRM.length > 0 && (
+            <Polyline coordinates={ruteOSRM} strokeColor="#3b82f6" strokeWidth={5} />
+          )}
+
+          {!isNavigating && asalLatLng && !showTripShareModal && (
+            <Marker coordinate={{ latitude: asalLatLng[0], longitude: asalLatLng[1] }} pinColor="#1D9E75" title="Asal" />
+          )}
+          {!isNavigating && tujuanLatLng && !showTripShareModal && (
+            <Marker coordinate={{ latitude: tujuanLatLng[0], longitude: tujuanLatLng[1] }} pinColor="#EF4444" title="Tujuan" />
+          )}
+        </MapView>
         )}
 
-        {isNavigating && path.length > 0 && (
-          <Polyline coordinates={path} strokeColor="#1D9E75" strokeWidth={6} />
-        )}
+        {/* STRATA-LIKE OVERLAY (Hanya tampil saat mau di-share agar ikut terfoto) */}
+        {showTripShareModal && savedTripData && (
+          <View collapsable={false} style={{ position: 'absolute', top: insets.top + 20, left: 20, right: 20, backgroundColor: 'transparent' }}>
+            <LinearGradient colors={['rgba(6, 78, 59, 0.95)', 'rgba(2, 44, 34, 0.95)']} style={{ padding: 20, borderRadius: 24, borderWidth: 1, borderColor: '#1D9E75' }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <View>
+                  <Text style={{ color: '#FAC775', fontWeight: '900', fontSize: 24, letterSpacing: 1 }}>EmiTrack</Text>
+                  <Text style={{ color: 'white', opacity: 0.7, fontSize: 10, fontWeight: 'bold', textTransform: 'uppercase' }}>Earth Hero 2026</Text>
+                </View>
+                <View style={{ backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
+                  <Text style={{ color: 'white', fontSize: 10, fontWeight: 'bold' }}>{savedTripData.date}</Text>
+                </View>
+              </View>
+              
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 24 }}>
+                <View>
+                  <Text style={{ color: 'white', opacity: 0.6, fontSize: 11, fontWeight: 'bold' }}>Jarak Ditempuh</Text>
+                  <Text style={{ color: 'white', fontWeight: '900', fontSize: 28 }}>{savedTripData.jarak.toFixed(2)} <Text style={{ fontSize: 16 }}>km</Text></Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={{ color: 'white', opacity: 0.6, fontSize: 11, fontWeight: 'bold' }}>Emisi Dihemat</Text>
+                  <Text style={{ color: '#10B981', fontWeight: '900', fontSize: 28 }}>{savedTripData.emisiHemat} <Text style={{ fontSize: 16 }}>kg CO₂</Text></Text>
+                </View>
+              </View>
 
-        {!isNavigating && asalLatLng && (
-          <Marker coordinate={{ latitude: asalLatLng[0], longitude: asalLatLng[1] }} pinColor="#1D9E75" title="Asal" />
+              <View style={{ marginTop: 16, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', paddingTop: 16, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={{ backgroundColor: 'rgba(255,255,255,0.1)', width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center' }}>
+                  {savedTripData.jenis === 'motor' ? <Bike color="white" size={14} /> : savedTripData.jenis === 'mobil' ? <Car color="white" size={14} /> : savedTripData.jenis === 'sepeda' ? <Bike color="white" size={14} /> : <Train color="white" size={14} />}
+                </View>
+                <View>
+                  <Text style={{ color: 'white', opacity: 0.6, fontSize: 10, fontWeight: 'bold' }}>Moda Transportasi</Text>
+                  <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 13 }}>{savedTripData.modaLengkap}</Text>
+                </View>
+              </View>
+            </LinearGradient>
+          </View>
         )}
-        {!isNavigating && tujuanLatLng && (
-          <Marker coordinate={{ latitude: tujuanLatLng[0], longitude: tujuanLatLng[1] }} pinColor="#EF4444" title="Tujuan" />
-        )}
-      </MapView>
+      </ViewShot>
 
-      {/* 1.5 TOMBOL RE-CENTER LOCATION */}
-      {!isPickingMap && (
-        <TouchableOpacity 
-          style={[styles.recenterButton, isNavigating ? { bottom: 220 } : { top: 180 }]} 
+      {/* Floating UI Elements (Hidden when sharing) */}
+      {!showTripShareModal && (
+        <>
+          {/* 1.5 TOMBOL RE-CENTER LOCATION */}
+      <TouchableOpacity 
+        style={[styles.recenterButton, isNavigating ? { bottom: 220, top: 'auto', right: 16 } : isPickingMap ? { top: insets.top + 20, right: 16 } : { top: 260, right: 16 }]} 
           onPress={() => {
             if (location) {
               if (isNavigating) {
                 mapRef.current?.animateCamera({ 
                   center: location.coords, 
                   heading: location.coords.heading || 0,
-                  pitch: 45,
+                  pitch: 0,
                   zoom: 18 
                 }, { duration: 1000 });
               } else {
@@ -518,32 +649,55 @@ export default function MapScreen({ navigation }: any) {
             }
           }}
         >
-          <LocateFixed size={24} color="#1D9E75" />
-        </TouchableOpacity>
-      )}
+        <LocateFixed size={24} color="#1D9E75" />
+      </TouchableOpacity>
 
       {/* 2. PANEL PENCARIAN (Floating di Atas) */}
       {!isNavigating && !isPickingMap && (
         <View style={[styles.topSearchPanel, { top: insets.top + 16 }]}>
-          <View style={styles.searchCard}>
-            <View style={{ zIndex: 2 }}>
-              <LocationInput
-                label="Titik Asal"
-                placeholder="Cari lokasi asal..."
-                value={asal}
-                onChange={setAsal}
-                onPickMap={() => setIsPickingMap('asal')}
-              />
+          <View style={[styles.searchCard, { flexDirection: 'row', alignItems: 'center' }]}>
+            <View style={{ flex: 1 }}>
+              <View style={{ zIndex: 2 }}>
+                <LocationInput
+                  label="Titik Asal"
+                  placeholder="Cari lokasi asal..."
+                  value={asal}
+                  onChange={setAsal}
+                  onPickMap={() => setIsPickingMap('asal')}
+                  onCurrentLocation={() => {
+                    if (location) {
+                      setAsal({
+                        lat: location.coords.latitude.toString(),
+                        lon: location.coords.longitude.toString(),
+                        display_name: 'Lokasi Anda Saat Ini'
+                      });
+                    } else {
+                      showToast('Lokasi belum tersedia', 'warning');
+                    }
+                  }}
+                />
+              </View>
+              <View style={{ zIndex: 1 }}>
+                <LocationInput
+                  label="Titik Tujuan"
+                  placeholder="Cari tujuan..."
+                  value={tujuan}
+                  onChange={setTujuan}
+                  onPickMap={() => setIsPickingMap('tujuan')}
+                />
+              </View>
             </View>
-            <View style={{ zIndex: 1 }}>
-              <LocationInput
-                label="Titik Tujuan"
-                placeholder="Cari tujuan..."
-                value={tujuan}
-                onChange={setTujuan}
-                onPickMap={() => setIsPickingMap('tujuan')}
-              />
-            </View>
+
+            <TouchableOpacity 
+              style={{ padding: 8, backgroundColor: '#F9FAFB', borderRadius: 20, marginLeft: 8, borderWidth: 1, borderColor: '#E5E7EB' }}
+              onPress={() => {
+                const temp = asal;
+                setAsal(tujuan);
+                setTujuan(temp);
+              }}
+            >
+              <ArrowUpDown size={20} color="#6B7280" />
+            </TouchableOpacity>
 
             {isFetchingRoute && (
               <View style={{ position: 'absolute', right: 24, top: 50, zIndex: 3 }}>
@@ -554,16 +708,17 @@ export default function MapScreen({ navigation }: any) {
         </View>
       )}
 
-      {/* 3. PANEL REKOMENDASI (Bottom Sheet Swipeable) */}
+      {/* 3. PANEL REKOMENDASI */}
       {!isNavigating && !isPickingMap && ruteOSRM && (
-        <Animated.View style={[styles.bottomSheetPanel, { bottom: insets.bottom + 100, transform: [{ translateY }] }]}>
-          <View {...panResponder.panHandlers} style={styles.sheetHeaderArea}>
+        <View style={[styles.bottomSheetPanel, { bottom: insets.bottom + 100 }]}>
+          <TouchableOpacity activeOpacity={0.8} onPress={() => setIsSheetExpanded(!isSheetExpanded)} style={styles.sheetHeaderArea}>
             <View style={styles.sheetHandle} />
             <Text style={styles.sheetTitle}>Rekomendasi Rute Hijau</Text>
-            <Text style={styles.sheetSubtitle}>Jarak est: {jarakKm} km • {durasiMenit} mnt (mobil)</Text>
-          </View>
+            {isSheetExpanded && <Text style={styles.sheetSubtitle}>Jarak est: {jarakKm} km • {durasiMenit} mnt (mobil)</Text>}
+          </TouchableOpacity>
 
-          <ScrollView style={styles.recommendationList} showsVerticalScrollIndicator={false} scrollEnabled={isSheetExpanded}>
+          {isSheetExpanded ? (
+            <ScrollView style={styles.recommendationList} showsVerticalScrollIndicator={false}>
             {rekomendasi.map((rec, i) => (
               <TouchableOpacity 
                 key={i} 
@@ -608,7 +763,21 @@ export default function MapScreen({ navigation }: any) {
             ))}
             <View style={{ height: 20 }} />
           </ScrollView>
-        </Animated.View>
+          ) : (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingHorizontal: 16, marginTop: 8 }} contentContainerStyle={{ gap: 12 }}>
+              {rekomendasi.map((rec, i) => (
+                <TouchableOpacity 
+                  key={i} 
+                  style={{ backgroundColor: '#F3F4F6', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: activeModa === rec.moda ? '#1D9E75' : '#E5E7EB' }}
+                  onPress={() => { setActiveModa(rec.moda); setIsSheetExpanded(true); }}
+                >
+                  {rec.moda.includes('Mobil') ? <Car size={14} color="#4B5563" /> : rec.moda.includes('Motor') ? <Bike size={14} color="#4B5563" /> : <Train size={14} color="#4B5563" />}
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: '#4B5563' }}>{rec.moda.includes('Mobil') ? durasiMenit : Math.round(durasiMenit * 0.9)} mnt</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
+        </View>
       )}
 
       {/* OVERLAY PICK MAP (Gojek-style) */}
@@ -624,7 +793,7 @@ export default function MapScreen({ navigation }: any) {
           </View>
 
           {/* Panel Bawah Konfirmasi */}
-          <View style={styles.pickMapBottomPanel}>
+          <View style={[styles.pickMapBottomPanel, { bottom: insets.bottom + 16, left: 16, right: 16 }]}>
             <Text style={styles.pickMapTitle}>
               Pilih Titik {isPickingMap === 'asal' ? 'Asal' : 'Tujuan'}
             </Text>
@@ -696,7 +865,7 @@ export default function MapScreen({ navigation }: any) {
           </View>
 
           {/* Bottom Card Navigasi */}
-          <View style={[styles.navBottomOverlay, { bottom: insets.bottom + 100 }]}>
+          <View style={[styles.navBottomOverlay, { bottom: insets.bottom + 16 }]}>
             <View style={styles.navBottomCard}>
               {persenProgress < 50 && (
                 <Text style={styles.navHint}>Tempuh minimal 50% rute untuk menyelesaikan</Text>
@@ -715,6 +884,46 @@ export default function MapScreen({ navigation }: any) {
           </View>
         </>
       )}
+
+        </>
+      )}
+
+      {/* SHARE ACTIONS OVERLAY (Bottom Sheet khusus Share) */}
+      {showTripShareModal && savedTripData && (
+        <View style={{ position: 'absolute', bottom: insets.bottom + 96, left: 16, right: 16, padding: 24, backgroundColor: 'white', borderRadius: 32, elevation: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 20 }}>
+          <Text style={{ fontSize: 20, fontWeight: '900', textAlign: 'center', marginBottom: 8, color: '#1F2937' }}>Perjalanan Selesai! 🎉</Text>
+          <Text style={{ fontSize: 13, color: '#6B7280', textAlign: 'center', marginBottom: 24 }}>Pamerkan rute hijaumu ke teman-teman dan jadilah inspirasi bagi mereka.</Text>
+          
+          <TouchableOpacity 
+            style={[styles.btnSelesai, { marginBottom: 12, height: 56, borderRadius: 28, elevation: 4, shadowColor: '#10B981', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 }]} 
+            onPress={async () => {
+              if (mapShotRef.current) {
+                try {
+                  const uri = await mapShotRef.current.capture();
+                  await Sharing.shareAsync(uri);
+                } catch (e) {
+                  console.log(e);
+                }
+              }
+            }}
+          >
+            <ShareIcon color="white" size={20} />
+            <Text style={[styles.btnSelesaiText, { fontSize: 16 }]}>Bagikan Gambar Rute</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[styles.btnBatal, { backgroundColor: '#F3F4F6', height: 56, borderRadius: 28 }]} 
+            onPress={() => {
+              setShowTripShareModal(false);
+              stopNavigation();
+              navigation.navigate('Dashboard');
+            }}
+          >
+            <Text style={[styles.btnBatalText, { color: '#4B5563', fontSize: 15 }]}>Tutup & Kembali ke Beranda</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
     </View>
   );
 }
@@ -747,7 +956,7 @@ const styles = StyleSheet.create({
     bottom: 80, // Hindari TabBar
     left: 16,
     right: 16,
-    height: windowHeight * 0.45,
+    maxHeight: windowHeight * 0.4,
     backgroundColor: 'white',
     borderRadius: 24,
     padding: 16,
@@ -1067,17 +1276,12 @@ const styles = StyleSheet.create({
   },
   pickMapBottomPanel: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
     backgroundColor: 'white',
     padding: 20,
-    paddingBottom: 40,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderRadius: 24,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
     shadowRadius: 12,
     elevation: 20,
     zIndex: 40,

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator, Animated, Dimensions } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator, Animated, Dimensions, RefreshControl } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Bike, Car, Bus, Navigation, Leaf, Map } from 'lucide-react-native';
+import { Bike, Car, Bus, Navigation, Leaf, Map, ArrowLeft } from 'lucide-react-native';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { LABEL_BBM, MODA_UMUM_LABEL } from '../lib/emisi';
@@ -20,15 +20,17 @@ type Trip = {
   created_at: string;
 };
 
-type FilterJenis = 'semua' | 'kendaraan' | 'umum';
+type FilterJenis = 'semua' | 'kendaraan' | 'umum' | 'sepeda';
 
-function getIcon(jenis: string) {
+function getIcon(jenis: string, bbm: string) {
+  if (bbm === 'sepeda' || jenis === 'sepeda') return <Bike color="#1D9E75" size={20} />;
   if (jenis === 'motor') return <Bike color="#6B7280" size={20} />;
   if (jenis === 'mobil') return <Car color="#6B7280" size={20} />;
   return <Bus color="#1D9E75" size={20} />;
 }
 
-function getLabel(jenis: string) {
+function getLabel(jenis: string, bbm: string) {
+  if (bbm === 'sepeda' || jenis === 'sepeda') return 'Sepeda';
   if (jenis === 'motor') return 'Motor Pribadi';
   if (jenis === 'mobil') return 'Mobil Pribadi';
   return 'Trans. Umum';
@@ -77,10 +79,19 @@ export default function RiwayatScreen({ navigation }: any) {
     setLoading(false);
   };
 
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchTrips();
+    setRefreshing(false);
+  };
+
   const filtered = useMemo(() => {
     return trips.filter(t => {
-      if (filter === 'kendaraan') return t.jenis === 'motor' || t.jenis === 'mobil';
-      if (filter === 'umum') return t.jenis === 'transportasi_umum';
+      const isSepeda = t.bbm === 'sepeda' || t.jenis === 'sepeda';
+      if (filter === 'sepeda') return isSepeda;
+      if (filter === 'kendaraan') return (t.jenis === 'motor' || t.jenis === 'mobil') && !isSepeda;
+      if (filter === 'umum') return t.jenis === 'transportasi_umum' && !isSepeda;
       return true;
     });
   }, [trips, filter]);
@@ -102,8 +113,8 @@ export default function RiwayatScreen({ navigation }: any) {
       }}>
         <View style={{ flex: 1, paddingHorizontal: 16, justifyContent: 'center' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            <TouchableOpacity onPress={() => navigation.goBack()}>
-              <Text style={styles.backBtn}>← Kembali</Text>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 4 }}>
+              <ArrowLeft color="#1F2937" size={24} />
             </TouchableOpacity>
             <View>
               <Text style={styles.topbarTitle}>Riwayat Perjalanan</Text>
@@ -120,20 +131,24 @@ export default function RiwayatScreen({ navigation }: any) {
           { useNativeDriver: true }
         )}
         scrollEventThrottle={16}
-        contentContainerStyle={{ padding: 16, paddingTop: insets.top + HEADER_HEIGHT - 25, paddingBottom: 100 + insets.bottom, minHeight: Dimensions.get('window').height + HEADER_HEIGHT }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#1D9E75']} />}
+        contentContainerStyle={{ padding: 16, paddingTop: insets.top + HEADER_HEIGHT - 5, paddingBottom: 100 + insets.bottom, minHeight: Dimensions.get('window').height + HEADER_HEIGHT }}
       >
 
         {/* Filter */}
-        <View style={styles.filterRow}>
-          {([
-            { val: 'semua', label: 'Semua' },
-            { val: 'kendaraan', label: 'Kendaraan' },
-            { val: 'umum', label: 'Trans. Umum' },
-          ] as { val: FilterJenis; label: string }[]).map(f => (
-            <TouchableOpacity key={f.val} style={[styles.filterBtn, filter === f.val && styles.filterBtnActive]} onPress={() => setFilter(f.val)}>
-              <Text style={[styles.filterText, filter === f.val && styles.filterTextActive]}>{f.label}</Text>
-            </TouchableOpacity>
-          ))}
+        <View style={{ marginBottom: 16 }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow} contentContainerStyle={{ paddingRight: 16 }}>
+            {([
+              { val: 'semua', label: 'Semua' },
+              { val: 'kendaraan', label: 'Kendaraan Pribadi' },
+              { val: 'umum', label: 'Transportasi Umum' },
+              { val: 'sepeda', label: 'Sepeda' },
+            ] as { val: FilterJenis; label: string }[]).map(f => (
+              <TouchableOpacity key={f.val} style={[styles.filterBtn, filter === f.val && styles.filterBtnActive]} onPress={() => setFilter(f.val)}>
+                <Text style={[styles.filterText, filter === f.val && styles.filterTextActive]}>{f.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
         </View>
 
         {/* Summary */}
@@ -165,14 +180,14 @@ export default function RiwayatScreen({ navigation }: any) {
           /* Trip list */
           filtered.map(trip => (
             <View key={trip.id} style={styles.tripRow}>
-              <View style={styles.tripIconWrap}>{getIcon(trip.jenis)}</View>
+              <View style={styles.tripIconWrap}>{getIcon(trip.jenis, trip.bbm)}</View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.tripTitle}>{getLabel(trip.jenis)} — {getBbmLabel(trip)}</Text>
+                <Text style={styles.tripTitle}>{getLabel(trip.jenis, trip.bbm)} — {getBbmLabel(trip)}</Text>
                 <Text style={styles.tripTime}>{trip.jarak_km} km · {new Date(trip.created_at).toLocaleDateString('id-ID')}</Text>
               </View>
               <View style={{ alignItems: 'flex-end', gap: 4 }}>
-                <View style={[styles.badge, { backgroundColor: trip.jenis === 'transportasi_umum' ? '#E1F5EE' : '#FEF2F2' }]}>
-                  <Text style={{ fontSize: 11, fontWeight: '500', color: trip.jenis === 'transportasi_umum' ? '#065F46' : '#DC2626' }}>
+                <View style={[styles.badge, { backgroundColor: (trip.jenis === 'transportasi_umum' || trip.bbm === 'sepeda') ? '#E1F5EE' : '#FEF2F2' }]}>
+                  <Text style={{ fontSize: 11, fontWeight: '500', color: (trip.jenis === 'transportasi_umum' || trip.bbm === 'sepeda') ? '#065F46' : '#DC2626' }}>
                     {trip.emisi_kg.toFixed(3)} kg CO₂
                   </Text>
                 </View>

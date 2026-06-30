@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator, Animated, Dimensions } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator, Animated, Dimensions, RefreshControl } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Medal, Trophy, Users, Globe, Bus, Target, Award } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
@@ -50,21 +50,32 @@ export default function LeaderboardScreen() {
     setLoading(true);
     let query = supabase.from('profiles').select('*');
 
-    if (tab === 'kota' && myProfile?.kota) {
-      query = query.eq('kota', myProfile.kota);
-    }
-
     if (tab === 'poin') {
       query = query.order('total_poin', { ascending: false });
     } else {
       query = query.order('total_hemat', { ascending: false });
     }
 
-    const { data } = await query.limit(50);
+    const { data } = await query.limit(200);
     if (data) {
-      setUsers(data as Profile[]);
-      const me = data.find(u => u.id === user?.id) as Profile | undefined;
+      const allProfiles = data as Profile[];
+      const me = allProfiles.find(u => u.id === user?.id);
       if (me) setMyProfile(me);
+
+      const isSameCity = (a: string | undefined | null, b: string | undefined | null) => {
+        if (!a || !b) return false;
+        const cleanA = a.toLowerCase().replace(/^(kota|kabupaten)\s+/i, '').trim();
+        const cleanB = b.toLowerCase().replace(/^(kota|kabupaten)\s+/i, '').trim();
+        return cleanA === cleanB;
+      };
+
+      let filtered = allProfiles;
+      
+      if (tab === 'kota' && me?.kota) {
+        filtered = allProfiles.filter(p => isSameCity(p.kota, me.kota));
+      }
+
+      setUsers(filtered.slice(0, 50));
     }
     setLoading(false);
   };
@@ -83,6 +94,13 @@ export default function LeaderboardScreen() {
       const sum = hematRes.data.reduce((acc, curr) => acc + (curr.total_hemat || 0), 0);
       setTotalHemat(sum);
     }
+  };
+
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await Promise.all([fetchLeaderboard(), fetchStats()]);
+    setRefreshing(false);
   };
 
   const { useSafeAreaInsets } = require('react-native-safe-area-context');
@@ -121,12 +139,13 @@ export default function LeaderboardScreen() {
 
       <Animated.ScrollView 
         showsVerticalScrollIndicator={false} 
-        contentContainerStyle={{ padding: 16, paddingTop: insets.top + HEADER_HEIGHT - 25, paddingBottom: 100 + insets.bottom, minHeight: Dimensions.get('window').height + HEADER_HEIGHT }}
+        contentContainerStyle={{ padding: 16, paddingTop: insets.top + HEADER_HEIGHT - 5, paddingBottom: 100 + insets.bottom, minHeight: Dimensions.get('window').height + HEADER_HEIGHT }}
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
           { useNativeDriver: true }
         )}
         scrollEventThrottle={16}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#1D9E75']} />}
       >
         {/* Tabs */}
         <View style={styles.tabContainer}>
@@ -195,11 +214,11 @@ export default function LeaderboardScreen() {
 
             {/* Community Stats */}
             <View style={styles.communityCard}>
-              <Text style={styles.sectionLabel}>STATISTIK KOMUNITAS</Text>
+              <Text style={styles.sectionLabel}>STATISTIK KOMUNITAS (GLOBAL)</Text>
               {[
-                { label: 'Total pengguna', value: `${totalUsers} orang`, icon: Users },
-                { label: 'CO₂ dihemat komunitas', value: `${totalHemat.toFixed(1)} kg`, icon: Globe },
-                { label: 'Total trip', value: `${totalTrips} trip`, icon: Bus },
+                { label: 'Total pengguna global', value: `${totalUsers} orang`, icon: Users },
+                { label: 'CO₂ dihemat global', value: `${totalHemat.toFixed(1)} kg`, icon: Globe },
+                { label: 'Total trip global', value: `${totalTrips} trip`, icon: Bus },
               ].map((s, i) => {
                 const Icon = s.icon;
                 return (

@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, Animated, TouchableOpacity } from 'react-native';
 import { X } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export type ToastType = 'success' | 'info' | 'warning';
 
@@ -8,6 +9,7 @@ export interface ToastItem {
   id: string;
   msg: string;
   type: ToastType;
+  position?: 'top' | 'bottom' | number;
 }
 
 type ToastListener = (toasts: ToastItem[]) => void;
@@ -18,9 +20,9 @@ function notify() {
   _listeners.forEach(l => l([..._toasts]));
 }
 
-export function showToast(msg: string, type: ToastType = 'success', duration = 3000) {
+export function showToast(msg: string, type: ToastType = 'success', duration = 3000, position?: 'top' | 'bottom' | number) {
   const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  _toasts = [..._toasts, { id, msg, type }];
+  _toasts = [..._toasts, { id, msg, type, position }];
   notify();
   setTimeout(() => {
     _toasts = _toasts.filter(t => t.id !== id);
@@ -41,7 +43,8 @@ const BORDER: Record<ToastType, string> = {
 };
 
 const ToastMessage = ({ toast, onDismiss }: { toast: ToastItem, onDismiss: (id: string) => void }) => {
-  const [slide] = useState(new Animated.Value(100)); // Start below screen
+  const isTop = toast.position === 'top';
+  const [slide] = useState(new Animated.Value(isTop ? -100 : 100));
 
   useEffect(() => {
     Animated.spring(slide, {
@@ -64,7 +67,7 @@ const ToastMessage = ({ toast, onDismiss }: { toast: ToastItem, onDismiss: (id: 
     >
       <Text style={styles.toastText}>{toast.msg}</Text>
       <TouchableOpacity onPress={() => onDismiss(toast.id)}>
-        <X color="rgba(255,255,255,0.7)" size={16} />
+        <X color="rgba(255,255,255,0.7)" size={14} />
       </TouchableOpacity>
     </Animated.View>
   );
@@ -72,6 +75,7 @@ const ToastMessage = ({ toast, onDismiss }: { toast: ToastItem, onDismiss: (id: 
 
 export default function ToastContainer() {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     const listener: ToastListener = (t) => setToasts(t);
@@ -86,12 +90,29 @@ export default function ToastContainer() {
 
   if (toasts.length === 0) return null;
 
+  // Group toasts by position
+  const topToasts = toasts.filter(t => t.position === 'top');
+  const bottomToasts = toasts.filter(t => t.position === 'bottom' || t.position === undefined || typeof t.position === 'number');
+
   return (
-    <View style={styles.container} pointerEvents="box-none">
-      {toasts.map(t => (
-        <ToastMessage key={t.id} toast={t} onDismiss={dismiss} />
-      ))}
-    </View>
+    <>
+      <View style={[styles.container, { top: insets.top + 16, bottom: undefined }]} pointerEvents="box-none">
+        {topToasts.map(t => (
+          <ToastMessage key={t.id} toast={t} onDismiss={dismiss} />
+        ))}
+      </View>
+      <View style={styles.container} pointerEvents="box-none">
+        {bottomToasts.map(t => {
+           // Custom bottom offset if position is a number
+           const customBottom = typeof t.position === 'number' ? t.position : undefined;
+           return (
+             <View key={t.id} style={customBottom !== undefined ? { position: 'absolute', bottom: customBottom, width: '100%', alignItems: 'center' } : { width: '100%', alignItems: 'center' }}>
+               <ToastMessage toast={t} onDismiss={dismiss} />
+             </View>
+           );
+        })}
+      </View>
+    </>
   );
 }
 
@@ -108,22 +129,22 @@ const styles = StyleSheet.create({
   toastBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
     borderWidth: 1,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
     elevation: 6,
-    maxWidth: '90%',
+    maxWidth: '85%',
   },
   toastText: {
     color: 'white',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '500',
-    flex: 1,
+    flexShrink: 1,
   },
 });

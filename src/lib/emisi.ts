@@ -109,8 +109,8 @@ export const POIN_REWARD: Record<string, number> = {
 
 // Moda label translations for trip display
 export const MODA_UMUM_LABEL: Record<string, string> = {
-  transjakarta: 'TransJakarta',
-  krl: 'KRL',
+  transjakarta: 'Bus/BRT',
+  krl: 'Kereta (Lokal/KRL)',
   sepeda: 'Sepeda',
 };
 

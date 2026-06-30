@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, ActivityIndicator } from 'react-native';
-import { Search, MapPin, X } from 'lucide-react-native';
+import { Search, MapPin, X, Navigation } from 'lucide-react-native';
 
 export type NominatimResult = {
   lat: string;
@@ -14,9 +14,10 @@ type LocationInputProps = {
   value: NominatimResult | null;
   onChange: (val: NominatimResult | null) => void;
   onPickMap?: () => void;
+  onCurrentLocation?: () => void;
 };
 
-export default function LocationInput({ label, placeholder, value, onChange, onPickMap }: LocationInputProps) {
+export default function LocationInput({ label, placeholder, value, onChange, onPickMap, onCurrentLocation }: LocationInputProps) {
   const [query, setQuery] = useState(value?.display_name || '');
   const [results, setResults] = useState<NominatimResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -103,7 +104,7 @@ export default function LocationInput({ label, placeholder, value, onChange, onP
           value={query}
           onChangeText={handleTextChange}
           onFocus={() => {
-            if (results.length > 0 || onPickMap) setShowDropdown(true);
+            if (results.length > 0 || onPickMap || onCurrentLocation) setShowDropdown(true);
           }}
         />
         {isLoading ? (
@@ -115,8 +116,19 @@ export default function LocationInput({ label, placeholder, value, onChange, onP
         ) : null}
       </View>
 
-      {showDropdown && (results.length > 0 || onPickMap) && (
+      {showDropdown && (results.length > 0 || onPickMap || onCurrentLocation) && (
         <View style={styles.dropdown}>
+          {onCurrentLocation && (
+            <TouchableOpacity 
+              style={[styles.dropdownItem, { borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }]} 
+              onPress={() => { setShowDropdown(false); onCurrentLocation(); }}
+            >
+              <Navigation color="#2563EB" size={16} style={{ marginTop: 2 }} />
+              <Text style={[styles.dropdownText, { color: '#2563EB', fontWeight: 'bold' }]}>
+                Gunakan Lokasi Saat Ini
+              </Text>
+            </TouchableOpacity>
+          )}
           {onPickMap && (
             <TouchableOpacity 
               style={[styles.dropdownItem, { borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }]} 

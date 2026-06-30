@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { StyleSheet, Text, View, ScrollView, TextInput, TouchableOpacity, Alert, Animated, Dimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Bike, Car, Train, Bus, Check, Calculator, Leaf, Coins, Trophy, BarChart2, Droplets, TreePine, Plane } from 'lucide-react-native';
+import { Bike, Car, Train, Bus, Check, Calculator, Leaf, Coins, Trophy, BarChart2, Droplets, TreePine, Plane, ArrowLeft } from 'lucide-react-native';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { hitungEmisi, RATA_RATA_NASIONAL, BBM_OPTIONS, LABEL_BBM, CONTOH_MEREK, KONSUMSI } from '../lib/emisi';
@@ -14,7 +14,7 @@ const TRANSPORTASI = [
   { value: 'motor', label: 'Motor', icon: Bike, poin: 10, isPrivate: true },
   { value: 'mobil', label: 'Mobil', icon: Car, poin: 10, isPrivate: true },
   { value: 'sepeda', label: 'Sepeda', icon: Bike, poin: 80, isPrivate: false, emisiPerKm: 0 },
-  { value: 'krl', label: 'KRL', icon: Train, poin: 40, isPrivate: false, emisiPerKm: 0.001 },
+  { value: 'krl', label: 'Kereta', icon: Train, poin: 40, isPrivate: false, emisiPerKm: 0.001 },
   { value: 'transjakarta', label: 'Bus', icon: Bus, poin: 50, isPrivate: false, emisiPerKm: 0.038 },
 ];
 
@@ -33,11 +33,13 @@ export default function KalkulatorScreen({ navigation }: any) {
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<'hitung' | 'proyeksi'>('hitung');
-  const [jenis, setJenis] = useState('motor');
-  const [bbm, setBbm] = useState('ron92');
-  const [jarakText, setJarakText] = useState('20');
-  const [saved, setSaved] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [jenis, setJenis] = useState('');
+  const [bbm, setBbm] = useState('');
+  const [jarakText, setJarakText] = useState('');
+  const [jarakHarian, setJarakHarian] = useState('');
+  const [hariPerMinggu, setHariPerMinggu] = useState('');
+  const [showResultHitung, setShowResultHitung] = useState(false);
+  const [showResultProyeksi, setShowResultProyeksi] = useState(false);
 
   // Animated Header Setup
   const HEADER_HEIGHT = 90;
@@ -50,18 +52,15 @@ export default function KalkulatorScreen({ navigation }: any) {
   });
 
   const jarak = Number(jarakText) || 0;
-  const selectedModa = TRANSPORTASI.find(t => t.value === jenis)!;
+  const selectedModa = TRANSPORTASI.find(t => t.value === jenis);
 
-  const emisiHarian = selectedModa.isPrivate
+  const emisiHarian = selectedModa?.isPrivate
     ? hitungEmisi(jenis, bbm, jarak)
-    : Number((jarak * (selectedModa.emisiPerKm ?? 0)).toFixed(3));
+    : Number((jarak * (selectedModa?.emisiPerKm ?? 0)).toFixed(3));
 
   const emisiBulanan = Number((emisiHarian * 22).toFixed(1));
   const emisiTahunan = Number((emisiHarian * 264).toFixed(0));
   const vsRataRata = Number(((emisiHarian / RATA_RATA_NASIONAL) * 100).toFixed(0));
-
-  const [jarakHarian, setJarakHarian] = useState('20');
-  const [hariPerMinggu, setHariPerMinggu] = useState('5');
 
   const hariMggNum = Number(hariPerMinggu) || 5;
   const jarakHarianNum = Number(jarakHarian) || 20;
@@ -78,33 +77,7 @@ export default function KalkulatorScreen({ navigation }: any) {
   const airLiter = Math.round(emisiTahunProyeksi / 0.5);
   const jamTerbang = Number((emisiTahunProyeksi / 90).toFixed(1));
 
-  async function simpanTrip() {
-    if (!user) return;
-    setSaving(true);
-    const emisiDihemat = selectedModa.isPrivate
-      ? Math.max(0, Number((RATA_RATA_NASIONAL - emisiHarian).toFixed(3)))
-      : Number((hitungEmisi('motor', 'ron92', jarak) - emisiHarian).toFixed(3));
 
-    const { error } = await supabase.from('trips').insert({
-      user_id: user.id,
-      jenis: selectedModa.isPrivate ? jenis : 'transportasi_umum',
-      bbm: selectedModa.isPrivate ? bbm : jenis,
-      jarak_km: jarak,
-      emisi_kg: emisiHarian,
-      emisi_dihemat: emisiDihemat,
-      poin_didapat: selectedModa.poin,
-    });
-
-    if (error) {
-      showToast(error.message, 'warning');
-      setSaving(false);
-      return;
-    }
-    setSaving(false);
-    setSaved(true);
-    showToast(`Tersimpan! +${selectedModa.poin} poin`, 'success');
-    setTimeout(() => setSaved(false), 3000);
-  }
 
   return (
     <View style={styles.container}>
@@ -120,19 +93,19 @@ export default function KalkulatorScreen({ navigation }: any) {
       }}>
         <View style={{ flex: 1, paddingHorizontal: 16, justifyContent: 'center' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            <TouchableOpacity onPress={() => navigation.goBack()}>
-              <Text style={styles.backBtn}>← Kembali</Text>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 4 }}>
+              <ArrowLeft color="#1F2937" size={24} />
             </TouchableOpacity>
-            <View>
+            <View style={{ flex: 1 }}>
               <Text style={styles.topbarTitle}>Kalkulator Emisi</Text>
-              <Text style={styles.topbarSub}>Berdasarkan IPCC 2021 & ESDM RI</Text>
+              <Text style={styles.topbarSub}>Kalkulasi jejak emisi harian & tahunanmu</Text>
             </View>
           </View>
         </View>
       </Animated.View>
 
       <Animated.ScrollView
-        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + HEADER_HEIGHT - 25, paddingBottom: 100 + insets.bottom, minHeight: Dimensions.get('window').height + HEADER_HEIGHT }]}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + HEADER_HEIGHT - 5, paddingBottom: 100 + insets.bottom, minHeight: Dimensions.get('window').height + HEADER_HEIGHT }]}
         showsVerticalScrollIndicator={false}
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
@@ -141,24 +114,24 @@ export default function KalkulatorScreen({ navigation }: any) {
         scrollEventThrottle={16}
       >
 
-        <View style={[styles.tabContainer, { paddingHorizontal: 16 }]}>
+        <View style={[styles.tabContainer]}>
           <TouchableOpacity style={[styles.tabBtn, activeTab === 'hitung' && styles.tabBtnActive]} onPress={() => setActiveTab('hitung')}>
             <Calculator color={activeTab === 'hitung' ? '#1D9E75' : '#6B7280'} size={16} />
-            <Text style={[styles.tabText, activeTab === 'hitung' && styles.tabTextActive]}>Hitung Emisi</Text>
+            <Text style={[styles.tabText, activeTab === 'hitung' && styles.tabTextActive]}>Emisi Harian</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.tabBtn, activeTab === 'proyeksi' && styles.tabBtnActive]} onPress={() => setActiveTab('proyeksi')}>
             <BarChart2 color={activeTab === 'proyeksi' ? '#1D9E75' : '#6B7280'} size={16} />
-            <Text style={[styles.tabText, activeTab === 'proyeksi' && styles.tabTextActive]}>Proyeksi Tahunan</Text>
+            <Text style={[styles.tabText, activeTab === 'proyeksi' && styles.tabTextActive]}>Emisi Tahunan</Text>
           </TouchableOpacity>
         </View>
 
-        <View style={[styles.card, { marginHorizontal: 16 }]}>
+        <View style={[styles.card]}>
           <Text style={styles.cardTitle}>Moda Transportasi</Text>
           <View style={styles.modaGrid}>
             {TRANSPORTASI.map(t => {
               const Icon = t.icon;
               return (
-                <TouchableOpacity key={t.value} style={[styles.modaBtn, jenis === t.value && styles.modaBtnActive]} onPress={() => { setJenis(t.value); setBbm('ron92'); }}>
+                <TouchableOpacity key={t.value} style={[styles.modaBtn, jenis === t.value && styles.modaBtnActive]} onPress={() => { setJenis(t.value); setBbm(''); }}>
                   <Icon color={jenis === t.value ? 'white' : '#6B7280'} size={16} />
                   <Text style={[styles.modaText, jenis === t.value && styles.modaTextActive]}>{t.label}</Text>
                 </TouchableOpacity>
@@ -167,8 +140,8 @@ export default function KalkulatorScreen({ navigation }: any) {
           </View>
         </View>
 
-        {selectedModa.isPrivate && (
-          <View style={[styles.card, { marginHorizontal: 16 }]}>
+        {selectedModa?.isPrivate && (
+          <View style={[styles.card]}>
             <Text style={styles.cardTitle}>Bahan Bakar</Text>
             <View style={styles.modaGrid}>
               {BBM_OPTIONS[jenis]?.map(b => (
@@ -186,53 +159,94 @@ export default function KalkulatorScreen({ navigation }: any) {
               <Text style={styles.cardTitle}>Jarak Tempuh Harian (km)</Text>
               <TextInput value={jarakText} onChangeText={setJarakText} keyboardType="numeric" style={styles.input} />
             </View>
-            <View style={styles.resultCard}>
-              <Text style={styles.cardTitle}>Hasil Estimasi CO₂</Text>
-              <View style={styles.modaGrid}>
-                {[{ label: 'Harian', val: emisiHarian, color: '#D97706' }, { label: 'Bulanan', val: emisiBulanan, color: '#1D9E75' }, { label: 'Tahunan', val: emisiTahunan, color: '#EF4444' }].map(s => (
-                  <View key={s.label} style={{ flex: 1, alignItems: 'center' }}>
-                    <Text style={{ fontSize: 16, fontWeight: 'bold', color: s.color }}>{s.val}</Text>
-                    <Text style={{ fontSize: 10, color: '#9CA3AF' }}>{s.label} (kg)</Text>
-                  </View>
-                ))}
+            {showResultHitung && (
+              <View style={styles.resultCard}>
+                <Text style={styles.cardTitle}>Hasil Estimasi CO₂</Text>
+                <View style={styles.modaGrid}>
+                  {[{ label: 'Harian', val: emisiHarian, color: '#D97706' }, { label: 'Bulanan', val: emisiBulanan, color: '#1D9E75' }, { label: 'Tahunan', val: emisiTahunan, color: '#EF4444' }].map(s => (
+                    <View key={s.label} style={{ flex: 1, alignItems: 'center' }}>
+                      <Text style={{ fontSize: 16, fontWeight: 'bold', color: s.color }}>{s.val}</Text>
+                      <Text style={{ fontSize: 10, color: '#9CA3AF' }}>{s.label} (kg)</Text>
+                    </View>
+                  ))}
+                </View>
+                <View style={[styles.compareBox, { marginTop: 10 }]}>
+                  <Text style={styles.compareText}>{vsRataRata <= 100 ? `✓ Emisi kamu ${100 - vsRataRata}% di bawah rata-rata nasional. Bagus!` : `⚠️ Emisi kamu ${vsRataRata - 100}% di atas rata-rata nasional.`}</Text>
+                </View>
               </View>
-              <View style={[styles.compareBox, { marginTop: 10 }]}>
-                <Text style={styles.compareText}>{vsRataRata <= 100 ? `✓ Emisi kamu ${100 - vsRataRata}% di bawah rata-rata nasional. Bagus!` : `⚠️ Emisi kamu ${vsRataRata - 100}% di atas rata-rata nasional.`}</Text>
-              </View>
-            </View>
-            <TouchableOpacity style={styles.saveBtn} onPress={simpanTrip} disabled={saving || saved}>
-              <Text style={{ color: 'white', fontWeight: '600' }}>{saving ? 'Menyimpan...' : saved ? 'Tersimpan!' : `Simpan Perjalanan (+${selectedModa.poin} poin)`}</Text>
-            </TouchableOpacity>
+            )}
           </>
         ) : (
           <>
-            <View style={styles.card}>
+            <View style={[styles.card]}>
               <Text style={styles.cardTitle}>Jarak Harian (km)</Text>
               <TextInput value={jarakHarian} onChangeText={setJarakHarian} keyboardType="numeric" style={styles.input} />
             </View>
-            <View style={styles.card}>
+            <View style={[styles.card]}>
               <Text style={styles.cardTitle}>Hari per Minggu</Text>
               <TextInput value={hariPerMinggu} onChangeText={setHariPerMinggu} keyboardType="numeric" style={styles.input} />
             </View>
-            <Text style={[styles.cardTitle, { marginTop: 10 }]}>Dampak Setahun Penuh</Text>
-            <View style={styles.modaGrid}>
-              <View style={[styles.resultCard, { flex: 1 }]}>
-                <Text style={{ fontWeight: 'bold', color: '#EF4444' }}>{emisiTahunProyeksi}</Text>
-                <Text style={{ fontSize: 10 }}>kg CO₂</Text>
-              </View>
-              <View style={[styles.resultCard, { flex: 1 }]}>
-                <Text style={{ fontWeight: 'bold', color: '#2563EB' }}>{biayaBbmTahun >= 1000000 ? `${(biayaBbmTahun / 1000000).toFixed(1)} jt` : `${Math.round(biayaBbmTahun / 1000)} rb`}</Text>
-                <Text style={{ fontSize: 10 }}>Biaya BBM</Text>
-              </View>
-            </View>
-            <View style={styles.resultCard}>
-              <View style={styles.modaGrid}>
-                <View style={{ alignItems: 'center', flex: 1 }}><TreePine color="#1D9E75" /><Text style={{ fontSize: 10 }}>{pohon} pohon</Text></View>
-                <View style={{ alignItems: 'center', flex: 1 }}><Droplets color="#3B82F6" /><Text style={{ fontSize: 10 }}>{Math.round(airLiter / 1000)}k L air</Text></View>
-              </View>
-            </View>
+            {showResultProyeksi && (
+              <>
+                <Text style={[styles.cardTitle, { marginTop: 10 }]}>Dampak Setahun Penuh</Text>
+                <View style={[styles.modaGrid]}>
+                  <View style={[styles.resultCard, { flex: 1 }]}>
+                    <Text style={{ fontWeight: 'bold', color: '#EF4444', fontSize: 18 }}>{emisiTahunProyeksi}</Text>
+                    <Text style={{ fontSize: 11, color: '#9CA3AF' }}>kg CO₂</Text>
+                  </View>
+                  <View style={[styles.resultCard, { flex: 1 }]}>
+                    <Text style={{ fontWeight: 'bold', color: '#2563EB', fontSize: 18 }}>{biayaBbmTahun >= 1000000 ? `${(biayaBbmTahun / 1000000).toFixed(1)} jt` : `${Math.round(biayaBbmTahun / 1000)} rb`}</Text>
+                    <Text style={{ fontSize: 11, color: '#9CA3AF' }}>Biaya BBM</Text>
+                  </View>
+                </View>
+                <View style={[styles.resultCard, { marginTop: 12 }]}>
+                  <View style={styles.modaGrid}>
+                    <View style={{ alignItems: 'center', flex: 1 }}>
+                      <TreePine color="#1D9E75" size={24} />
+                      <Text style={{ fontSize: 11, color: '#6B7280', marginTop: 4 }}>Setara {pohon} pohon</Text>
+                    </View>
+                    <View style={{ alignItems: 'center', flex: 1 }}>
+                      <Droplets color="#3B82F6" size={24} />
+                      <Text style={{ fontSize: 11, color: '#6B7280', marginTop: 4 }}>Serapan {Math.round(airLiter / 1000)}k L air</Text>
+                    </View>
+                  </View>
+                </View>
+              </>
+            )}
           </>
         )}
+
+        <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
+          <TouchableOpacity style={[styles.saveBtn, { flex: 1, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#D1D5DB', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1 }]} onPress={() => {
+            setJenis('');
+            setBbm('');
+            setJarakText('');
+            setJarakHarian('');
+            setHariPerMinggu('');
+            setShowResultHitung(false);
+            setShowResultProyeksi(false);
+          }}>
+            <Text style={{ color: '#4B5563', fontWeight: '600' }}>Reset</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={[styles.saveBtn, { flex: 1, borderWidth: 1, borderColor: '#047857', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1 }]} onPress={() => {
+            if (activeTab === 'hitung') {
+              if (!jenis || (selectedModa?.isPrivate && !bbm) || !jarakText) {
+                showToast('Mohon lengkapi semua data', 'warning');
+                return;
+              }
+              setShowResultHitung(true);
+            } else {
+              if (!jenis || (selectedModa?.isPrivate && !bbm) || !jarakHarian || !hariPerMinggu) {
+                showToast('Mohon lengkapi semua data', 'warning');
+                return;
+              }
+              setShowResultProyeksi(true);
+            }
+          }}>
+            <Text style={{ color: 'white', fontWeight: '600' }}>Hitung</Text>
+          </TouchableOpacity>
+        </View>
       </Animated.ScrollView>
 
       {/* Dynamic Status Bar Overlay with translateY for native driver support */}
@@ -274,8 +288,8 @@ const styles = StyleSheet.create({
   tabBtnActive: { backgroundColor: '#E1F5EE', borderColor: '#1D9E75' },
   tabText: { fontSize: 13, fontWeight: '600', color: '#6B7280' },
   tabTextActive: { color: '#1D9E75' },
-  scrollContent: { paddingBottom: 100 },
-  card: { backgroundColor: 'white', borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#F3F4F6' },
+  scrollContent: { paddingBottom: 100, paddingHorizontal: 16 },
+  card: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#E5E7EB', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
   cardTitle: { fontSize: 14, fontWeight: 'bold', color: '#374151', marginBottom: 12 },
   modaGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   modaBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, backgroundColor: '#F9FAFB' },
@@ -283,7 +297,7 @@ const styles = StyleSheet.create({
   modaText: { fontSize: 12, fontWeight: '500', color: '#6B7280' },
   modaTextActive: { color: 'white' },
   input: { backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#F3F4F6', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: '#374151', fontWeight: '500' },
-  resultCard: { backgroundColor: '#F9FAFB', borderRadius: 14, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: '#F3F4F6', marginTop: 8 },
+  resultCard: { backgroundColor: '#FFFFFF', borderRadius: 14, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: '#E5E7EB', marginTop: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 6, elevation: 1 },
   compareBox: { backgroundColor: '#FFFFFF', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#F3F4F6' },
   compareText: { fontSize: 12, color: '#4B5563', lineHeight: 18 },
   saveBtn: { backgroundColor: '#1D9E75', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16, borderRadius: 16, marginTop: 8 },

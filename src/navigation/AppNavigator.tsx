@@ -117,11 +117,9 @@ function CustomTabBar({ state, descriptors, navigation, position }: any) {
     return null;
   }
 
-  const { BlurView } = require('expo-blur');
+  const { View } = require('react-native');
   const { useSafeAreaInsets } = require('react-native-safe-area-context');
   const insets = useSafeAreaInsets();
-
-  const AnimatedBlurView = Animated.createAnimatedComponent(BlurView);
 
   return (
     <Animated.View
@@ -138,9 +136,7 @@ function CustomTabBar({ state, descriptors, navigation, position }: any) {
         borderWidth: 1,
       }}
     >
-      <BlurView
-        intensity={100}
-        tint="light"
+      <View
         style={{
           flex: 1,
           backgroundColor: 'rgba(255, 255, 255, 0.85)',
@@ -149,9 +145,7 @@ function CustomTabBar({ state, descriptors, navigation, position }: any) {
         }}
       >
         {/* Gelembung Utama yang melayang mulus */}
-        <AnimatedBlurView
-          intensity={50}
-          tint="light"
+        <Animated.View
           style={{
             position: 'absolute',
             bottom: 8,
@@ -211,7 +205,7 @@ function CustomTabBar({ state, descriptors, navigation, position }: any) {
             </TouchableOpacity>
           );
         })}
-      </BlurView>
+      </View>
     </Animated.View>
   );
 }

@@ -1,7 +1,7 @@
 import React from 'react';
-import { StyleSheet, Text, View, ScrollView, Animated, Dimensions } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, Animated, Dimensions, TouchableOpacity } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Info, Leaf, Car, TreePine as Trees, TrendingUp, AlertTriangle, Bus, Bike, Wind, Zap, Users, Target, BookOpen } from 'lucide-react-native';
+import { Info, Leaf, Car, TreePine as Trees, TrendingUp, AlertTriangle, Bus, Bike, Wind, Zap, Users, Target, ArrowLeft } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 
@@ -47,11 +47,11 @@ export default function EdukasiScreen({ navigation }: any) {
         opacity: headerOpacity
       }}>
         <View style={{ flex: 1, paddingHorizontal: 16, justifyContent: 'center' }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: '#E0F2FE', justifyContent: 'center', alignItems: 'center' }}>
-              <BookOpen color="#0EA5E9" size={20} />
-            </View>
-            <View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 4 }}>
+              <ArrowLeft color="#1F2937" size={24} />
+            </TouchableOpacity>
+            <View style={{ flex: 1 }}>
               <Text style={styles.topbarTitle}>Edukasi & Tips</Text>
               <Text style={styles.topbarSub}>Tingkatkan pengetahuan Anda hari ini.</Text>
             </View>
@@ -66,7 +66,7 @@ export default function EdukasiScreen({ navigation }: any) {
           { useNativeDriver: true }
         )}
         scrollEventThrottle={16}
-        contentContainerStyle={{ padding: 16, paddingTop: insets.top + HEADER_HEIGHT - 25, paddingBottom: 100 + insets.bottom, minHeight: Dimensions.get('window').height + HEADER_HEIGHT }}
+        contentContainerStyle={{ padding: 16, paddingTop: insets.top + HEADER_HEIGHT - 5, paddingBottom: 100 + insets.bottom, minHeight: Dimensions.get('window').height + HEADER_HEIGHT }}
       >
 
         {/* Tahukah Kamu */}
